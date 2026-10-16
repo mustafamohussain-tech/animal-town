@@ -81,6 +81,7 @@ function loop(now) {
   music.setNight(game.daynight.isNight);
   game.world.adapt(dt);
   game.world.render();
+  game.recorder?.frame();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

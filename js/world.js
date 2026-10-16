@@ -54,13 +54,19 @@ export class World {
     this.ft = 1 / 60;
     s.add(sun, sun.target);
     this.sunOffset = new THREE.Vector3(30, 50, 25);
+    // light space, used to move the shadow box in whole shadow pixels (no shimmering while the camera moves)
+    this.lightRot = new THREE.Matrix4().lookAt(this.sunOffset, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+    this.lightInv = this.lightRot.clone().invert();
+    this.texel = 90 / 1024;
 
     this.grid = new Grid();
     this.landR = 5;
-    const g = mesh(new THREE.PlaneGeometry(4000, 4000), '#7cc265', 0, -.02, 0, s);
+    // ground outside the land: darker (not built yet), lower and pushed back in depth so it never
+    // flickers against the land when the camera is far away
+    const g = this.outside = mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ color: '#4d7244', roughness: 1, polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 8 }), 0, -.35, 0, s);
     g.rotation.x = -Math.PI / 2;
     g.receiveShadow = true;
-    this.land = mesh(new THREE.PlaneGeometry(1, 1), '#8fd67a', 0, 0, 0, s);
+    this.land = mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ color: '#8fd67a', roughness: 1, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }), 0, 0, 0, s);
     this.land.rotation.x = -Math.PI / 2;
     this.land.receiveShadow = true;
     this.border = new THREE.Group();
@@ -95,7 +101,7 @@ export class World {
     this.trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(.3, .42, 2.4, 6), mat('#8b5a2b'), N);
     this.tops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.9, 0), mat('#ffffff'), N);
     this.trunks.castShadow = this.tops.castShadow = true;
-    for (let k = 0; k < N; k++) this.tops.setColorAt(k, new THREE.Color(pick(LEAVES)));
+    for (let k = 0; k < N; k++) this.tops.setColorAt(k, new THREE.Color(pick(LEAVES)).multiplyScalar(.68));
     this.scene.add(this.trunks, this.tops);
   }
   placeForest() {
@@ -152,17 +158,37 @@ export class World {
     const t = this.controls.target, half = this.landHalf + 20;
     t.x = clamp(t.x, -half, half);
     t.z = clamp(t.z, -half, half);
-    // the sun's shadow box follows what we look at
-    this.sun.position.copy(t).add(this.sunOffset);
-    this.sun.target.position.copy(t);
+    // the sun's shadow box follows what we look at, snapped to whole shadow pixels
+    const p = this.snapV || (this.snapV = new THREE.Vector3());
+    p.copy(t).applyMatrix4(this.lightInv);
+    p.x = Math.round(p.x / this.texel) * this.texel;
+    p.y = Math.round(p.y / this.texel) * this.texel;
+    p.applyMatrix4(this.lightRot);
+    this.sun.position.copy(p).add(this.sunOffset);
+    this.sun.target.position.copy(p);
+    // depth precision: the near plane moves out when the camera is far (stops the ground flickering)
+    const cam = this.camera, h = cam.position.y;
+    const near = clamp(Math.min(h, cam.position.distanceTo(t)) * .03, .2, 6);
+    if (Math.abs(near - cam.near) > .05) { cam.near = near; cam.updateProjectionMatrix(); }
     // see further when the camera is high (airplane view)
-    const h = this.camera.position.y;
     this.scene.fog.near = 140 + h * 1.2;
     this.scene.fog.far = 520 + h * 4;
   }
 
   // keep the frame rate smooth: lower the resolution a bit when the PC is struggling, raise it again when fine
+  // recording at full size: the 3D view is drawn at exactly this pixel ratio (null = back to automatic)
+  forcePixelRatio(pr) {
+    this.forcedPR = pr ? Math.min(pr, 4) : null;
+    this.setPR(this.forcedPR || Math.min(this.pr, this.maxPR));
+  }
+  setPR(pr) {
+    this.pr = pr;
+    this.renderer.setPixelRatio(pr);
+    const s = this.renderer.getSize(new THREE.Vector2());
+    this.renderer.setSize(s.x, s.y);
+  }
   adapt(dt) {
+    if (this.forcedPR) return;
     this.ft += (Math.min(dt, .1) - this.ft) * .05;
     this.adaptT = (this.adaptT || 0) + dt;
     if (this.adaptT < 1.5) return;
@@ -179,7 +205,9 @@ export class World {
   }
 
   render() {
-    if ((this.frame++ & 1) === 0) this.sun.shadow.needsUpdate = true;
+    // shadows only need a refresh when something moved; the light only moves in whole shadow pixels
+    if ((this.frame++ & 1) === 0 || !this.lastSun?.equals(this.sun.position)) this.sun.shadow.needsUpdate = true;
+    (this.lastSun ||= new THREE.Vector3()).copy(this.sun.position);
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }

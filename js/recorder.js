@@ -3,6 +3,7 @@
 // (a new follower arrives, a town event starts) and long recordings are saved in parts.
 // Files go to a folder you choose (Chrome / Edge) or to Downloads.
 import { t } from './i18n.js';
+import { paintDom } from './dompaint.js';
 
 const MIMES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4',
   'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
@@ -36,7 +37,8 @@ export class Recorder {
     this.canvasOnly = false;
     this.saved = 0;
     this.lastFile = '';
-    this.opts = { onJoin: true, onEvent: false, clipSec: 30, segMin: 10 };
+    // quality: 1080 / 720 = the game draws itself at that size (sharp, no screen sharing); tab = screen capture
+    this.opts = { onJoin: true, onEvent: false, clipSec: 30, segMin: 10, quality: '1080' };
     try { Object.assign(this.opts, JSON.parse(localStorage.getItem(OPTS_KEY)) || {}); } catch (e) { /* defaults */ }
     kvGet('recDir').then(d => { if (d) { this.dir = d; this.emit(); } });
     game.on('joined', c => this.onJoin(c));
@@ -45,7 +47,8 @@ export class Recorder {
   }
   get canTab() { return !!navigator.mediaDevices?.getDisplayMedia && typeof MediaRecorder !== 'undefined'; }
   get canPickFolder() { return 'showDirectoryPicker' in window; }
-  get armed() { return !!this.stream && this.raw?.readyState === 'live'; }
+  get direct() { return this.opts.quality !== 'tab'; }
+  get armed() { return this.direct || (!!this.stream && this.raw?.readyState === 'live'); }
   get recording() { return !!this.rec && this.rec.state === 'recording'; }
   get elapsed() { return this.info ? Date.now() - this.info.startedAt : 0; }
   emit() { this.game.emit('recorder'); }
@@ -141,7 +144,7 @@ export class Recorder {
     return out.captureStream(30).getVideoTracks()[0];
   }
   // is the picture still coming in?
-  get picture() { return !this.armed || this.canvasOnly || performance.now() - (this.lastFrame || 0) < 3000; }
+  get picture() { return !this.armed || this.canvasOnly || (this.direct && !this.recording) || performance.now() - (this.lastFrame || 0) < 3000; }
 
   disarm() {
     this.stop();
@@ -160,6 +163,7 @@ export class Recorder {
   // kind: manual | join | event. sec = stop by itself after this many seconds
   start(kind = 'manual', name = '', sec = 0) {
     if (!this.armed || this.recording) return false;
+    if (this.direct) this.prepareDirect();
     const mime = MIMES.find(m => MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(this.stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 10e6, audioBitsPerSecond: 160e3 });
     const chunks = [];
@@ -172,11 +176,48 @@ export class Recorder {
     this.emit();
     return true;
   }
-  stop() {
+  stop(keepSize = false) {
     if (this.recording) this.rec.stop();
     this.rec = null;
     this.info = null;
+    if (this.direct && !keepSize) this.game.world.forcePixelRatio(null);
     this.emit();
+  }
+
+  // ---------- full-resolution recording without screen capture ----------
+  // the 3D view is rendered at the video size and the names/cards are painted on top (dompaint.js)
+  prepareDirect() {
+    const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect();
+    const long = this.opts.quality === '720' ? 1280 : 1920;
+    const even = n => Math.max(2, Math.round(n / 2) * 2);
+    const k = this.k = long / Math.max(fr.width, fr.height);
+    const w = even(fr.width * k), h = even(fr.height * k);
+    if (!this.out || this.out.width !== w || this.out.height !== h) {
+      this.out?.remove();
+      this.out = document.createElement('canvas');
+      this.out.width = w;
+      this.out.height = h;
+      this.octx = this.out.getContext('2d');
+      this.stream = null;
+    }
+    this.frameEl = frame;
+    this.game.world.forcePixelRatio(k);
+    this.music.setup();
+    this.music.ctx.resume();
+    this.music.keepAlive = true;
+    if (!this.stream) this.stream = new MediaStream([this.out.captureStream(30).getVideoTracks()[0], ...this.music.recordStream().getAudioTracks()]);
+    this.emit();
+  }
+  // called by the game loop right after each render
+  frame() {
+    if (!this.direct || !this.recording || !this.out) return;
+    const now = performance.now();
+    if (now - (this.lastDraw || 0) < 31) return;
+    this.lastDraw = now;
+    const ctx = this.octx, o = this.out;
+    ctx.drawImage(this.game.world.renderer.domElement, 0, 0, o.width, o.height);
+    paintDom(ctx, this.frameEl, o.width / this.frameEl.getBoundingClientRect().width);
+    this.lastFrame = now;
   }
 
   tick() {
@@ -184,7 +225,7 @@ export class Recorder {
     const i = this.info, now = Date.now();
     if (i.until && now >= i.until) { this.stop(); return; }
     // long recordings are saved in parts so nothing is lost and files stay small
-    if (i.kind === 'manual' && this.opts.segMin && now - i.startedAt >= this.opts.segMin * 60000) { this.stop(); this.start('manual'); }
+    if (i.kind === 'manual' && this.opts.segMin && now - i.startedAt >= this.opts.segMin * 60000) { this.stop(true); this.start('manual'); }
   }
 
   // a new follower: follow them from the bus, then cinematic shots

@@ -85,6 +85,16 @@ export class CameraDirector {
     }
     this.game.emit('camera', mode);
   }
+  // step back to a view from above (e.g. to choose where to build), free to move
+  overview(p) {
+    const ctl = this.ctl;
+    if (this.mode !== 'free') this.setMode('free');
+    p ||= ctl.target;
+    const dir = tmp.copy(this.cam.position).sub(ctl.target).setY(0);
+    if (dir.lengthSq() < .01) dir.set(0, 0, 1);
+    dir.normalize();
+    this.goal = { target: new THREE.Vector3(p.x, 0, p.z), pos: new THREE.Vector3(p.x + dir.x * 34, 38, p.z + dir.z * 34) };
+  }
   focusFloor() {
     const b = this.building;
     const y = this.floor * FH + 1.2;

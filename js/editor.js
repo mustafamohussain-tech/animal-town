@@ -57,6 +57,9 @@ export class Editor {
     ctl.mouseButtons.LEFT = tool ? -1 : THREE.MOUSE.ROTATE;
     ctl.mouseButtons.RIGHT = tool ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
     this.game.world.renderer.domElement.style.cursor = tool ? 'crosshair' : '';
+    // building / drawing needs a free camera: stop following a citizen and look from above
+    const d = this.game.director;
+    if (tool && ['follow', 'cinema', 'plane'].includes(d.mode)) d.overview(d.char?.root.position);
     if (tool === 'place') {
       this.ghost = makeGhostModel(this.game, opts.spec);
       this.game.scene.add(this.ghost);
