@@ -315,6 +315,10 @@ export class Building {
     this.builtBy = d.builtBy ?? null; // who built it (shown in their belongings)
     this.residents = d.residents || [];
     this.progress = d.progress ?? 0;
+    // construction follows the real clock (default: one real week), even while the game is closed
+    this.duration = d.duration ?? game.buildDuration ?? 7 * 86400000;
+    this.startedAt = d.startedAt ?? (Date.now() - this.progress * this.duration);
+    this.progress = this.progress >= 1 ? 1 : Math.min(.999, Math.max(0, (Date.now() - this.startedAt) / this.duration));
     this.tile = { i: d.i, j: d.j };
     this.rot = d.rot || 0;
     this.alive = true;
@@ -508,7 +512,9 @@ export class Building {
     const b = document.createElement('b'); b.textContent = pct + '%';
     this.siteEl.append(s, i, b);
   }
-  get buildTime() { return (this.def.time || 12) + (this.spec.floors - 1) * 6; }
+  // time left until it is finished, in ms
+  get remaining() { return Math.max(0, this.startedAt + this.duration - Date.now()); }
+  finishNow() { if (!this.complete) this.startedAt = Date.now() - this.duration; }
   reveal(instant) {
     const n = this.pieces.length;
     const count = Math.min(n, Math.floor(this.progress * (n + 1)));
@@ -554,9 +560,11 @@ export class Building {
     this.cutState = '';
     for (const p of this.pieces) this.setVis(p);
   }
-  addProgress(dt) {
+  // builders hammering: shows the work (the real clock decides how far it is)
+  addProgress() {}
+  tickConstruction() {
     if (this.complete) return;
-    this.progress = Math.min(1, this.progress + dt / this.buildTime);
+    this.progress = Math.min(1, (Date.now() - this.startedAt) / this.duration);
     this.reveal(false);
     this.updateSiteLabel();
     if (this.progress >= 1) this.finish(false);
@@ -629,7 +637,7 @@ export class Building {
       a.o.position.y = a.o.userData.baseY + 4 * (1 - easeOutBack(f));
       if (f >= 1) { a.o.position.y = a.o.userData.baseY; this.anims.splice(k, 1); }
     }
-    if (!this.complete) return;
+    if (!this.complete) { this.siteTimer = (this.siteTimer || 0) - dt; if (this.siteTimer <= 0) { this.siteTimer = 1; this.tickConstruction(); } return; }
     if (this.needLod && !this.anims.length) this.buildLod();
     if (this.lights) {
       const on = Math.floor(tm * 3) % 2;
@@ -673,7 +681,7 @@ export class Building {
   toJSON() {
     return {
       id: this.id, spec: this.spec, i: this.tile.i, j: this.tile.j, rot: this.rot,
-      progress: this.complete ? 1 : +this.progress.toFixed(3), ownerId: this.ownerId, builtBy: this.builtBy, residents: this.residents,
+      progress: this.complete ? 1 : +this.progress.toFixed(4), startedAt: this.startedAt, duration: this.duration, ownerId: this.ownerId, builtBy: this.builtBy, residents: this.residents,
       crops: this.crops?.map(c => +c.grow.toFixed(2)),
     };
   }
@@ -705,7 +713,7 @@ export function makeGhostModel(game, spec) {
 export class Town {
   constructor(game) { this.game = game; this.all = []; this.nextId = 1; }
   create(spec, i, j, rot, o = {}) {
-    const b = new Building(this.game, { id: o.id ?? this.nextId, spec, i, j, rot, progress: o.progress, ownerId: o.ownerId, builtBy: o.builtBy, residents: o.residents, crops: o.crops });
+    const b = new Building(this.game, { id: o.id ?? this.nextId, spec, i, j, rot, progress: o.progress, startedAt: o.startedAt, duration: o.duration, ownerId: o.ownerId, builtBy: o.builtBy, residents: o.residents, crops: o.crops });
     this.nextId = Math.max(this.nextId, b.id + 1);
     this.all.push(b);
     return b;

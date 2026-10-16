@@ -52,9 +52,12 @@ export function addGlow(parent, x, y, z, size = 2.2, groundSize = 9) {
 export class DayNight {
   constructor(world) {
     this.world = world;
-    this.hour = 9;
+    // The clock follows real time: by default a full day+night takes 12 real hours
+    // (6 hours of daylight, 6 hours of night), and it keeps going while the game is closed.
+    this.cycleMs = 12 * 3600000;
     this.paused = false;
-    this.dayLength = 600; // seconds for a full day (10 minutes)
+    this.offset = 0;
+    this.setHour(9);
     this.night = 0;
     this.sources = new Set(); // { pos: Vector3 (world), power, alive() }
     this.poolTimer = 0;
@@ -87,6 +90,14 @@ export class DayNight {
     this.apply();
   }
 
+  clockHour() { return ((Date.now() / this.cycleMs * 24 + this.offset) % 24 + 24) % 24; }
+  setHour(h) {
+    this.hour = ((h % 24) + 24) % 24;
+    this.offset = ((this.hour - Date.now() / this.cycleMs * 24) % 24 + 24) % 24;
+    if (this.moon) this.apply();
+  }
+  setPaused(p) { this.paused = p; if (!p) this.setHour(this.hour); }
+  setCycle(ms) { const h = this.hour; this.cycleMs = ms; this.setHour(h); }
   get clockText() {
     const h = Math.floor(this.hour), m = Math.floor((this.hour - h) * 60);
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -97,7 +108,7 @@ export class DayNight {
   removeSource(src) { this.sources.delete(src); }
 
   update(dt) {
-    if (!this.paused) this.hour = (this.hour + dt * 24 / this.dayLength) % 24;
+    if (!this.paused) this.hour = this.clockHour();
     this.apply();
     this.poolTimer -= dt;
     if (this.poolTimer <= 0) { this.poolTimer = .4; this.assignPool(); }
@@ -108,7 +119,7 @@ export class DayNight {
   apply() {
     const w = this.world, h = this.hour;
     const elev = Math.sin((h - 6) / 12 * Math.PI);
-    const dayAmt = smooth(-.12, .3, elev);
+    const dayAmt = smooth(-.12, .3, elev) * (1 - .35 * (this.weather || 0));
     this.night = 1 - smooth(-.08, .18, elev);
 
     const sky = SKY_NIGHT.clone().lerp(SKY_DAWN, smooth(-.2, .05, elev)).lerp(SKY_DAY, smooth(.05, .4, elev));

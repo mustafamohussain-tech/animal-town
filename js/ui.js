@@ -5,13 +5,14 @@ import { JOBS, JOB_ORDER } from './jobs.js';
 import { TYPES, BUILD_MENU, SHOP_EMOJI, makeSpec } from './buildings.js';
 import { runCommand } from './commands.js';
 import { saveGame, clearSave } from './save.js';
-import { ProfileCard, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
+import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
+import { EVENT_ORDER } from './events.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
 
 const ACTION_LIST = [['car', '🚗'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
-const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['erase', '🧽']];
+const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);
@@ -90,12 +91,16 @@ export class UI {
       }
     };
     $('vb-lang').onclick = () => this.toggleLang();
+    $('ev-try-btn').onclick = () => { game.events.tryNow($('ev-try').value, 10); };
+    $('ev-stop').onclick = () => { game.events.tryNow(null); };
     $('b-floors').oninput = e => { this.bFloors = +e.target.value; $('b-floors-n').textContent = this.bFloors; };
     $('d-new').onclick = () => this.openDesigner({});
     $('d-photo').onclick = () => this.openDesigner({}, true);
     $('tool-done').onclick = () => game.editor.setTool(null);
     $('time-range').oninput = e => game.setHour(+e.target.value);
-    $('btn-pause').onclick = () => { game.daynight.paused = !game.daynight.paused; this.renderTime(); };
+    $('btn-pause').onclick = () => { game.daynight.setPaused(!game.daynight.paused); this.renderTime(); };
+    $('sel-cycle').onchange = e => game.daynight.setCycle(+e.target.value);
+    $('sel-build').onchange = e => { game.buildDuration = +e.target.value; };
     $('btn-day').onclick = () => game.setHour(9);
     $('btn-night').onclick = () => game.setHour(22);
     $('floor-up').onclick = () => game.director.setFloor(game.director.floor + 1);
@@ -105,7 +110,12 @@ export class UI {
     addEventListener('keydown', e => this.key(e));
     game.on('change', () => this.queueRender());
     this.card = new ProfileCard(game);
-    game.on('select', c => { this.renderSelected(true); this.renderList(); if (c) this.card.show(c); else this.card.hide(); });
+    this.bcard = new BuildingCard(game);
+    game.on('select', c => {
+      this.renderSelected(true); this.renderList();
+      if (c) this.card.show(c); else this.card.hide();
+      if (!c && game.selectedBuilding) this.bcard.show(game.selectedBuilding); else this.bcard.hide();
+    });
     game.on('change', () => {
       this.card.update();
       const gi = this.goalInput, s = game.selected;
@@ -232,6 +242,32 @@ export class UI {
     const g = this.game;
     $('hud-count').textContent = `🐾 ${g.chars.length.toLocaleString()}`;
     $('hud-day').textContent = t('dayN', { n: g.day });
+    const ev = g.events.active, he = $('hud-event');
+    he.classList.toggle('hidden', !ev);
+    if (ev) he.textContent = `${t('evE_' + ev)} ${t('ev_' + ev)}`;
+  }
+
+  // ---------- weekly calendar ----------
+  renderCalendar() {
+    const g = this.game, grid = $('cal-grid');
+    grid.textContent = '';
+    const fmt = new Intl.DateTimeFormat(getLang() === 'ar' ? 'ar' : 'en-GB', { weekday: 'long' });
+    const today = new Date().getDay();
+    for (const d of [6, 0, 1, 2, 3, 4, 5]) {
+      const row = el('div', 'cal-row' + (d === today ? ' today' : ''));
+      const date = new Date(2024, 0, 6 + d); // 2024-01-06 is a Saturday -> weekday d
+      row.appendChild(el('b', null, fmt.format(date)));
+      const sel = el('select');
+      const none = el('option', null, t('noEvent')); none.value = ''; sel.appendChild(none);
+      for (const k of EVENT_ORDER) { const o = el('option', null, `${t('evE_' + k)} ${t('ev_' + k)}`); o.value = k; sel.appendChild(o); }
+      sel.value = g.events.calendar[d] || '';
+      sel.onchange = () => { if (sel.value) g.events.calendar[d] = sel.value; else delete g.events.calendar[d]; g.events.timer = 0; };
+      row.appendChild(sel);
+      grid.appendChild(row);
+    }
+    const tr = $('ev-try');
+    tr.textContent = '';
+    for (const k of EVENT_ORDER) { const o = el('option', null, `${t('evE_' + k)} ${t('ev_' + k)}`); o.value = k; tr.appendChild(o); }
   }
 
   // ---------- screen shape ----------
@@ -297,6 +333,8 @@ export class UI {
   }
 
   refreshAll() {
+    $('sel-cycle').value = String(this.game.daynight.cycleMs);
+    $('sel-build').value = String(this.game.buildDuration);
     $('chk-follow').checked = this.game.followNew;
     $('chk-sleep').checked = this.game.nightSleep;
     $('chk-askplace').checked = this.game.choosePlace;
@@ -330,6 +368,7 @@ export class UI {
     this.renderTools();
     this.renderCamera();
     this.renderMusic();
+    this.renderCalendar();
     this.card?.update();
   }
   toggleLang() {
@@ -519,7 +558,7 @@ export class UI {
       grid.appendChild(tile(e, t('tool_' + k), () => this.game.editor.setTool(g.tool === k ? null : k), g.tool === k ? 'on' : ''));
     }
     const tool = g.tool;
-    $('tool-hint').textContent = !tool ? '' : tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers'].includes(tool) ? 'prop' : tool));
+    $('tool-hint').textContent = !tool ? '' : tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool));
     $('tool-done').style.display = tool ? '' : 'none';
   }
 
@@ -576,7 +615,7 @@ export class UI {
   // ---------- selected citizen or building ----------
   renderSelected(force) {
     const g = this.game, c = g.selected, b = g.selectedBuilding, card = $('sel-card');
-    const key = c ? 'c' + c.id : b ? 'b' + b.id : '';
+    const key = c ? 'c' + c.id : b ? `b${b.id}.${b.complete}.${b.ownerId}.${staffOf(g, b).map(x => x.id + x.job).join()}` : '';
     if (!force && key === this.selKey) { this.refreshSelected(); return; }
     this.selKey = key;
     card.textContent = '';
@@ -668,6 +707,15 @@ export class UI {
     info.append(nm, el('small', null, lines.join(' · ')));
     head.appendChild(info);
     card.appendChild(head);
+    if (!b.complete) {
+      // real-time construction: how long is left, or finish it right away
+      const prow = el('div', 'row-in');
+      const eta = el('span', 'hint', `🔨 ${Math.floor(b.progress * 100)}% · ${t('finishIn', { t: fmtDur(b.remaining) })}`);
+      const fin = el('button', null, '⚡ ' + t('finishNow'));
+      fin.onclick = () => { b.finishNow(); b.tickConstruction(); this.renderSelected(true); };
+      prow.append(eta, fin);
+      card.appendChild(prow);
+    }
     if (!['hospital', 'school', 'police', 'firestation', 'park', 'dock'].includes(b.kind)) {
       const orow = el('label', 'fld wide');
       const sel = el('select');
@@ -677,6 +725,31 @@ export class UI {
       sel.onchange = () => g.setOwner(b, sel.value ? g.getChar(+sel.value) : null);
       orow.append(el('span', null, '🔑 ' + t('ownerL')), sel);
       card.appendChild(orow);
+    }
+    // staff: who works here, hire someone, let someone go
+    if (g.jobAt(b)) {
+      card.appendChild(el('h3', null, '👷 ' + t('employees')));
+      const ul = el('ul', 'staff-list');
+      const staff = staffOf(g, b);
+      if (!staff.length) ul.appendChild(el('li', 'empty', t('noEmployees')));
+      for (const c of staff) {
+        const li = el('li');
+        const nm = el('span', null, `${c.pendingJob?.buildingId === b.id ? '⏳' : JOBS[c.job].emoji} ${c.name}`);
+        nm.dir = 'auto';
+        const x = el('button', 'icon danger', '✕');
+        x.title = t('letGo');
+        x.onclick = () => { if (c.pendingJob?.buildingId === b.id) c.pendingJob = null; else g.assignJob(c, 'none'); this.renderSelected(true); };
+        li.append(nm, x);
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+      const hrow = el('label', 'fld wide');
+      const hs = el('select');
+      const first = el('option', null, '➕ ' + t('hire')); first.value = ''; hs.appendChild(first);
+      for (const ch of [...g.chars].filter(x => !staff.includes(x)).sort((a, z) => a.name.localeCompare(z.name))) { const o = el('option', null, ch.name); o.value = ch.id; hs.appendChild(o); }
+      hs.onchange = () => { const ch = g.getChar(+hs.value); if (ch) { g.hire(ch, b); this.renderSelected(true); } };
+      hrow.append(el('span', null, '🤝 ' + t('hire')), hs);
+      card.appendChild(hrow);
     }
     const grid = el('div', 'grid');
     if (!TYPES[b.type]?.open && b.complete) grid.appendChild(tile('🚪', t('cam_enter'), () => g.director.setMode('interior', { building: b, floor: 0 })));

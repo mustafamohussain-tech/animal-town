@@ -108,13 +108,13 @@ function useSpot(b, kind, sec, o = {}) {
 }
 
 // ---------- building ----------
-export function buildAct(b) {
-  let spot = null, timer = 0;
+export function buildAct(b, shift = rand(40, 80)) {
+  let spot = null, timer = 0, worked = 0;
   return {
     name: 'build',
     start(c) { c.setTool('hammer'); spot = null; c.focusBuilding = b; },
     update(c, dt) {
-      if (!b.alive || b.complete) return true;
+      if (!b.alive || b.complete || worked > shift) return true;
       if (!spot || timer <= 0) {
         spot = b.buildSpot();
         c.moveTo(spot.x, spot.z, c.commanded ? 3.4 : 2);
@@ -125,6 +125,7 @@ export function buildAct(b) {
       c.faceAngle = angleTo(c.root.position, b.center);
       b.addProgress(dt);
       timer -= dt;
+      worked += dt;
       if (Math.random() < dt * 1.2) {
         c.handR.getWorldPosition(v3);
         c.game.effects.emit('dust', { x: v3.x, y: .4, z: v3.z }, 2);
@@ -283,9 +284,14 @@ export function actionActs(c, a, o = {}) {
 export function brain(c) {
   const g = c.game;
   if (c.hurt) return routine(patientRoutine(c), 'patient');
+  const ev = g.events.active === 'fireworks' || !g.daynight.isNight ? g.events.routineFor(c) : null;
+  if (ev) return routine(ev, 'event');
   if (g.nightSleep && g.daynight.isNight && !NIGHT_SHIFT.includes(c.job) && homeOf(c)) return routine(sleepActs(c, true), 'sleep');
+  // in the daytime, people work on the building they are building for themselves
+  const mine = !g.daynight.isNight && g.town.sites().find(b => b.builtBy === c.id);
+  if (mine && Math.random() < .45) return routine([buildAct(mine)], 'build');
   if (c.job === 'builder') {
-    const site = g.town.siteFor(c.root.position);
+    const site = !g.daynight.isNight && g.town.siteFor(c.root.position);
     if (site) return routine([buildAct(site)], 'build');
   } else if (c.job !== 'none' && !(g.daynight.isNight && !NIGHT_SHIFT.includes(c.job))) {
     const wp = g.workplaceFor(c);

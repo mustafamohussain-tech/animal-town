@@ -29,6 +29,9 @@ export function serialize(game) {
     musicVol: game.music?.volume ?? .5,
     landR: game.world.landR,
     hour: +game.daynight.hour.toFixed(3),
+    clockOffset: game.daynight.offset,
+    cycleMs: game.daynight.cycleMs,
+    buildDuration: game.buildDuration,
     paused: game.daynight.paused,
     roads: game.tiles.roadList(),
     curves: game.curves.toJSON(),
@@ -36,6 +39,7 @@ export function serialize(game) {
     buildings: game.town.all.map(b => b.toJSON()),
     chars: game.chars.map(c => c.toJSON()),
     vehicles: game.vehicles.toJSON(),
+    events: game.events.toJSON(),
   };
 }
 
@@ -53,17 +57,23 @@ export function loadData(game, data, { keepLang = false } = {}) {
   if (typeof data.siteUrl === 'string') game.siteUrl = data.siteUrl;
   game.savedMusic = { on: !!data.musicOn, vol: typeof data.musicVol === 'number' ? data.musicVol : .5 };
   game.world.setLand(data.landR || 5);
-  if (typeof data.hour === 'number') game.daynight.hour = data.hour;
-  game.daynight.paused = !!data.paused;
+  if (typeof data.buildDuration === 'number') game.buildDuration = data.buildDuration;
+  const dn = game.daynight;
+  if (typeof data.cycleMs === 'number') dn.cycleMs = data.cycleMs;
+  dn.paused = !!data.paused;
+  if (dn.paused && typeof data.hour === 'number') dn.hour = data.hour;
+  else if (typeof data.clockOffset === 'number') { dn.offset = data.clockOffset; dn.hour = dn.clockHour(); }
+  else if (typeof data.hour === 'number') dn.setHour(data.hour);
   const safe = (what, fn) => { try { fn(); } catch (e) { console.warn('skip', what, e); } };
   for (const [i, j] of data.roads || []) safe('road', () => game.tiles.setRoad(i, j, true));
   for (const c of data.curves || []) safe('curve', () => game.curves.add(c.pts, c.bridge, { id: c.id }));
   for (const b of data.buildings || []) {
-    safe('building', () => game.town.create(b.spec, b.i, b.j, b.rot, { id: b.id, progress: b.progress, ownerId: b.ownerId, builtBy: b.builtBy, residents: b.residents, crops: b.crops }));
+    safe('building', () => game.town.create(b.spec, b.i, b.j, b.rot, { id: b.id, progress: b.progress, startedAt: b.startedAt, duration: b.duration, ownerId: b.ownerId, builtBy: b.builtBy, residents: b.residents, crops: b.crops }));
   }
   for (const p of data.props || []) safe('prop', () => game.props.add(p.type, p.x, p.z, p.rot, { id: p.id, natural: p.natural, scale: p.scale }));
   for (const c of data.chars || []) safe('citizen', () => game.addCharacter(c, false));
   for (const v of data.vehicles || []) safe('vehicle', () => game.vehicles.add(v.ownerId, v));
+  if (data.events?.calendar) game.events.calendar = data.events.calendar;
   game.daynight.apply();
   return true;
 }

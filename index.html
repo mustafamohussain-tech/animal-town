@@ -20,7 +20,7 @@
     <div id="frame">
       <div id="hud">
         <div id="hud-title">🐾 <span data-i18n="title">Animal Town</span></div>
-        <div class="hud-right"><div id="hud-day">📅</div><div id="hud-clock">☀️ 09:00</div><div id="hud-count">🐾 0</div></div>
+        <div class="hud-right"><div id="hud-event" class="hidden"></div><div id="hud-day">📅</div><div id="hud-clock">☀️ 09:00</div><div id="hud-count">🐾 0</div></div>
       </div>
       <div id="banners"></div>
       <div id="viewer-bar" class="viewer-bar">
@@ -38,6 +38,17 @@
         <div class="pc-goal"><small data-i18n="goals"></small><ul id="pc-goals" class="pc-goals"></ul></div>
         <div id="pc-rows" class="pc-rows"></div>
         <div class="pc-bel"><b><span data-i18n="belongings"></span> (<span id="pc-bel-n">0</span>)</b><ul id="pc-bel"></ul></div>
+      </div>
+      <div id="bld-card" class="pcard hidden">
+        <div class="pc-top"><span data-i18n="buildingInfo"></span><button id="bc-close" aria-label="close">✕</button></div>
+        <div class="pc-head">
+          <div class="pc-photo bc-emoji"><span id="bc-emoji"></span></div>
+          <div class="pc-who"><b id="bc-name" dir="auto"></b><small id="bc-kind"></small></div>
+        </div>
+        <div class="pc-status"><i id="bc-dot"></i><span id="bc-status"></span></div>
+        <div id="bc-prog" class="bc-prog"><i></i></div>
+        <div id="bc-rows" class="pc-rows"></div>
+        <div class="pc-bel" id="bc-staff"><b><span data-i18n="employees"></span> (<span id="bc-emp-n">0</span>)</b><ul id="bc-emp"></ul></div>
       </div>
     </div>
     <button id="show-panel" data-i18n-title="showPanel">⚙️</button>
@@ -119,6 +130,17 @@
     </section>
 
     <section class="card">
+      <h2>📅 <span data-i18n="calendar"></span></h2>
+      <p class="hint" data-i18n="calHint"></p>
+      <div id="cal-grid" class="cal-grid"></div>
+      <div class="row-in">
+        <select id="ev-try"></select>
+        <button id="ev-try-btn" class="primary">▶️ <span data-i18n="tryNow"></span></button>
+        <button id="ev-stop" title="stop">⏹️</button>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>🕒 <span data-i18n="time"></span> <b id="clock-big" class="clock"></b></h2>
       <input id="time-range" type="range" min="0" max="23.99" step="0.05">
       <div class="btn-row">
@@ -127,6 +149,13 @@
         <button id="btn-pause"></button>
       </div>
       <label class="check"><input type="checkbox" id="chk-sleep" checked> <span data-i18n="nightSleep"></span></label>
+      <label class="fld wide"><span data-i18n="cycleL"></span>
+        <select id="sel-cycle">
+          <option value="43200000" data-i18n="cyc_12h"></option>
+          <option value="86400000" data-i18n="cyc_24h"></option>
+          <option value="1440000" data-i18n="cyc_24m"></option>
+          <option value="600000" data-i18n="cyc_10m"></option>
+        </select></label>
     </section>
 
     <section class="card">
@@ -144,6 +173,14 @@
     <section class="card">
       <h2>🏘️ <span data-i18n="town"></span></h2>
       <div id="town-stats" class="town-stats"></div>
+      <label class="fld wide"><span data-i18n="buildL"></span>
+        <select id="sel-build">
+          <option value="604800000" data-i18n="bd_7d"></option>
+          <option value="259200000" data-i18n="bd_3d"></option>
+          <option value="86400000" data-i18n="bd_1d"></option>
+          <option value="3600000" data-i18n="bd_1h"></option>
+          <option value="60000" data-i18n="bd_1m"></option>
+        </select></label>
       <p id="land-size" class="hint"></p>
       <div class="btn-row">
         <button id="btn-expand">🌍 <span data-i18n="expand"></span></button>

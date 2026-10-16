@@ -181,6 +181,17 @@ select { background: #141926; border: 1px solid var(--line); border-radius: 8px;
 .prof-edit a { align-self: center; color: var(--blue); font-size: 13px; text-decoration: none; white-space: nowrap; }
 .file-btn { flex: 1; background: #2d3650; border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; cursor: pointer; font-size: 13px; text-align: center; }
 .file-btn input { display: none; }
+.bc-emoji { display: flex; align-items: center; justify-content: center; }
+.pc-photo.bc-emoji span { position: static; font-size: 36px; }
+.pc-who small { color: #7d8a74; font-size: 12px; }
+.pc-status i.build { background: #f0ad4e; }
+.bc-prog { height: 7px; background: #e3e6d6; border-radius: 4px; overflow: hidden; margin: 8px 0 2px; }
+.bc-prog.hidden { display: none; }
+.bc-prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #f0ad4e, #ffcf3f); transition: width .5s; }
+.pc-rows a { color: #6b8a5a; font-weight: 600; text-decoration: none; }
+.staff-list { list-style: none; margin: 4px 0 8px; padding: 0; }
+.staff-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 0; font-size: 13px; }
+.staff-list li.empty { color: #8a93a0; font-style: italic; }
 .pc-goals { list-style: none; margin: 3px 0 0; padding: 0; font-size: 12.5px; line-height: 1.35; }
 .pc-goals li { padding: 1px 0; }
 .pc-goals li.done { color: #8a9a80; text-decoration: line-through; }
@@ -214,3 +225,11 @@ dialog.dlg .file-btn { display: block; margin: 6px 0; }
 #screen-btns .chip-btn.on { background: var(--acc); color: var(--acc-txt); border-color: var(--acc); }
 .pcard { right: auto; width: min(380px, calc(100% - 20px)); }
 #frame[dir="rtl"] .pcard { left: auto; right: 10px; }
+
+.cal-grid { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 8px; }
+.cal-row { display: flex; align-items: center; gap: 8px; background: #1a2030; border-radius: 9px; padding: 4px 8px; }
+.cal-row b { width: 70px; font-size: 13px; }
+.cal-row select { flex: 1; }
+.cal-row.today { outline: 2px solid var(--acc); }
+#hud-event.hidden { display: none; }
+#hud-event { background: linear-gradient(135deg, #ffcf3f, #ff9f43) !important; color: #2a1a00 !important; }

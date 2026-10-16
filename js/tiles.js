@@ -42,7 +42,7 @@ export class TileMap {
     if (r.road === on) return false;
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
-    for (const [a, c] of [[i, j], [i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) this.rebuild(a, c);
+    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuild(a, c); // diagonals too (wide areas)
     return true;
   }
 
@@ -69,13 +69,16 @@ export class TileMap {
     if (!e) box(SW, .14, TILE, WALK, E, .07, 0, g);
     if (!w) box(SW, .14, TILE, WALK, -E, .07, 0, g);
     // corner squares where two roads meet
-    if (n && e) box(SW, .14, SW, WALK, E, .07, -E, g);
-    if (n && w) box(SW, .14, SW, WALK, -E, .07, -E, g);
-    if (s && e) box(SW, .14, SW, WALK, E, .07, E, g);
-    if (s && w) box(SW, .14, SW, WALK, -E, .07, E, g);
+    // corner squares where two roads meet (not inside a wide paved area)
+    if (n && e && !this.isRoad(i + 1, j - 1)) box(SW, .14, SW, WALK, E, .07, -E, g);
+    if (n && w && !this.isRoad(i - 1, j - 1)) box(SW, .14, SW, WALK, -E, .07, -E, g);
+    if (s && e && !this.isRoad(i + 1, j + 1)) box(SW, .14, SW, WALK, E, .07, E, g);
+    if (s && w && !this.isRoad(i - 1, j + 1)) box(SW, .14, SW, WALK, -E, .07, E, g);
 
-    // markings
-    const count = n + s + e + w;
+    // markings (none on wide areas: roads drawn side by side form a square, not crossings)
+    const R = (a, c) => this.isRoad(a, c);
+    const wide = (n && e && R(i + 1, j - 1)) || (n && w && R(i - 1, j - 1)) || (s && e && R(i + 1, j + 1)) || (s && w && R(i - 1, j + 1));
+    const count = wide ? 0 : n + s + e + w;
     const dashZ = (z0, z1) => { for (let z = z0; z < z1; z += 3) box(.18, .01, 1.6, LINE, 0, .065, z + .8, g); };
     const dashX = (x0, x1) => { for (let x = x0; x < x1; x += 3) box(1.6, .01, .18, LINE, x + .8, .065, 0, g); };
     if (count >= 3) {
@@ -89,7 +92,7 @@ export class TileMap {
         }
       };
       if (n) zebra('n'); if (s) zebra('s'); if (e) zebra('e'); if (w) zebra('w');
-    } else {
+    } else if (!wide) {
       if (n) dashZ(-HALF, -.3);
       if (s) dashZ(.3, HALF);
       if (e) dashX(.3, HALF);

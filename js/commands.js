@@ -82,6 +82,16 @@ const TIME_WORDS = {
   9: list('day,morning,daytime,نهار,النهار,صباح,الصبح,صباحا'),
   18.4: list('sunset,evening,غروب,المغرب,مساء'),
 };
+const EVENT_WORDS = {
+  festival: list('festival,party,حفله,مهرجان,احتفال'),
+  fireworks: list('fireworks,firework,العاب ناريه,مفرقعات'),
+  rain: list('rain,raining,rainy,مطر,تمطر,امطار'),
+  concert: list('concert,حفله موسيقيه,كونسرت'),
+  sports: list('sports day,sport,رياضه,يوم رياضي'),
+  cleanup: list('cleanup,clean up,تنظيف,نظافه'),
+  eid: list('eid,عيد'),
+  market: list('market day,bazaar,بازار,سوق شعبي'),
+};
 const CAMERA_WORDS = {
   cinema: list('cinematic,cinema,movie,film,سينمائي,سينما,فلم,فيلم'),
   plane: list('airplane,plane,sky,aerial,drone,طائره,طياره,درون'),
@@ -182,6 +192,10 @@ export function runCommand(game, raw) {
     return t('removed', { name: who.name });
   }
 
+  // town events: "festival", "rain", "fireworks", "حفلة" (runs for 10 minutes)
+  const evKey = !mentioned.length && findKey(EVENT_WORDS, text, toks);
+  if (evKey) { game.events.tryNow(evKey, 10); return game.log(t('eventToday', { e: t('ev_' + evKey), emoji: t('evE_' + evKey) })); }
+
   // camera: "cinematic @ali", "airplane view"
   const cam = findKey(CAMERA_WORDS, text, toks);
   if (cam === 'plane') { game.director.setMode('plane'); return game.log('✈️'); }
@@ -225,6 +239,20 @@ export function runCommand(game, raw) {
     const type = building || JOB_PLACE[job];
     const owner = mentioned.length > 1 && forSomeone ? mentioned[1] : null;
     return game.orderBuild(mentioned[0] || game.selected || null, makeSpec(type, { variant, floors }), owner);
+  }
+
+  // 6b) employment: "@ali work at the hospital", "@ali work for @sara", "@علي يشتغل عند @سارة", "@علي يشتغل بالمستشفى"
+  const employer = isWork && !everyone && mentioned.length > 1 ? mentioned[1] : null;
+  if (isWork && !everyone && (employer || (building && PLACE_JOB[building]))) {
+    const worker = mentioned[0] || game.selected;
+    if (!worker) return game.log(t('notFound'));
+    if (employer) {
+      const b = game.businessOf(employer, building);
+      return b ? game.hire(worker, b) : game.log(t('noBusiness', { name: employer.name }));
+    }
+    const b = game.town.nearest(building, worker.root.position, { variant }) || game.town.of(building, false)[0];
+    // no such building yet: they build it first (old behaviour)
+    return b ? game.hire(worker, b) : game.assignJob(worker, PLACE_JOB[building]);
   }
 
   // 7) job: "@sara doctor", "make @ali a chef", "@ali work in the shop"

@@ -39,7 +39,8 @@ export class Editor {
     const el = game.world.renderer.domElement;
     el.addEventListener('pointerdown', e => this.down(e));
     el.addEventListener('pointermove', e => this.move(e));
-    addEventListener('pointerup', () => { this.painting = false; this.last = null; });
+    addEventListener('pointerup', () => this.up());
+    this.linePool = [];
     el.addEventListener('dblclick', () => { if (this.tool === 'curve' || this.tool === 'bridge') this.finishCurve(); });
     el.addEventListener('contextmenu', e => { if (this.tool) e.preventDefault(); });
     addEventListener('keydown', e => this.key(e));
@@ -63,6 +64,8 @@ export class Editor {
     this.game.emit('tool', tool);
   }
   clearPreview() {
+    this.lineStart = null;
+    this.hideLine?.();
     if (this.ghost) { this.game.scene.remove(this.ghost); this.ghost = null; }
     if (this.curvePreview) { this.game.scene.remove(this.curvePreview); this.curvePreview = null; }
     this.dots.clear();
@@ -84,17 +87,19 @@ export class Editor {
     const p = this.point(e);
     if (!p) return;
     const t = this.tool, g = this.game;
-    if (t === 'road' || t === 'erase') { this.painting = true; this.last = null; this.paint(p); return; }
+    if (t === 'road' || t === 'erase') { this.lineStart = [tileOf(p.x), tileOf(p.z)]; this.lineEnd = this.lineStart; this.showLine(); return; }
     if (t === 'curve' || t === 'bridge') {
-      this.pts.push({ x: Math.round(p.x), z: Math.round(p.z) });
+      const q = this.snap(p);
+      this.pts.push(q);
       const dot = new THREE.Mesh(new THREE.SphereGeometry(.5), new THREE.MeshBasicMaterial({ color: '#ffcf3f' }));
-      dot.position.set(Math.round(p.x), .5, Math.round(p.z));
+      dot.position.set(q.x, .5, q.z);
       this.dots.add(dot);
       this.updateCurve(p);
       return;
     }
     if (PROP_TYPES[t]) {
       if (!g.world.inLand(tileOf(p.x), tileOf(p.z))) return;
+      if (t === 'busstop') for (const old of g.props.list.filter(q => q.type === 'busstop')) g.props.remove(old); // only one bus stop
       g.props.add(t, Math.round(p.x * 2) / 2, Math.round(p.z * 2) / 2, this.rot * Math.PI / 2);
       g.emit('change');
       return;
@@ -112,13 +117,20 @@ export class Editor {
     if (!this.tool) return;
     const p = this.point(e);
     if (!p) return;
+    this.lastPoint = p;
     const t = this.tool;
     if (t === 'road' || t === 'erase') {
       const i = tileOf(p.x), j = tileOf(p.z);
-      this.cursor.visible = this.game.world.inLand(i, j);
-      this.cursor.position.set(i * TILE, .25, j * TILE);
-      this.cursor.material.color.set(t === 'road' ? '#ffcf3f' : '#ff3b30');
-      if (this.painting) this.paint(p);
+      if (this.lineStart) {
+        // straight line from where you pressed: follow the longer direction
+        const [a, c] = this.lineStart;
+        this.lineEnd = Math.abs(i - a) >= Math.abs(j - c) ? [i, c] : [a, j];
+        this.showLine();
+      } else {
+        this.cursor.visible = this.game.world.inLand(i, j);
+        this.cursor.position.set(i * TILE, .25, j * TILE);
+        this.cursor.material.color.set(t === 'road' ? '#ffcf3f' : '#ff3b30');
+      }
     } else if (t === 'curve' || t === 'bridge') {
       this.updateCurve(p);
     } else if (PROP_TYPES[t]) {
@@ -129,7 +141,64 @@ export class Editor {
     }
   }
 
-  // roads: paint tiles along the mouse path (fills gaps so the road stays connected)
+  // tiles of the straight line being drawn
+  lineTiles() {
+    const [a, c] = this.lineStart, [b, d] = this.lineEnd, out = [];
+    const n = Math.max(Math.abs(b - a), Math.abs(d - c));
+    for (let k = 0; k <= n; k++) out.push([a + Math.sign(b - a) * k, c + Math.sign(d - c) * k]);
+    return out;
+  }
+  // preview: green = will be built, red = blocked (building / outside the land)
+  showLine() {
+    const g = this.game, tiles = this.lineTiles();
+    while (this.linePool.length < tiles.length) {
+      const m = new THREE.Mesh(this.cursor.geometry, new THREE.MeshBasicMaterial({ transparent: true, opacity: .4, depthWrite: false }));
+      g.scene.add(m);
+      this.linePool.push(m);
+    }
+    this.cursor.visible = false;
+    this.linePool.forEach((m, k) => {
+      const tl = tiles[k];
+      m.visible = !!tl;
+      if (!tl) return;
+      const [i, j] = tl, rec = g.tiles.get(i, j);
+      const ok = this.tool === 'erase' || (g.world.inLand(i, j) && !(rec && rec.building != null));
+      m.position.set(i * TILE, .26, j * TILE);
+      m.material.color.set(this.tool === 'erase' ? '#ff3b30' : ok ? '#4cd964' : '#ff3b30');
+    });
+  }
+  hideLine() { this.linePool.forEach(m => { m.visible = false; }); }
+  up() {
+    if (!this.lineStart) return;
+    const g = this.game, tiles = this.lineTiles(), single = tiles.length === 1;
+    for (const [i, j] of tiles) {
+      if (this.tool === 'road') g.tiles.setRoad(i, j, true);
+      else if (g.tiles.isRoad(i, j)) g.tiles.setRoad(i, j, false);
+      else if (single) {
+        // a single click on something that isn't a road: remove a curved road / lamp / tree there
+        const x = i * TILE, z = j * TILE, p = this.lastPoint || { x, z };
+        const cv = g.curves.nearest(p.x, p.z, 6);
+        if (cv) g.curves.remove(cv);
+        else { const pr = g.props.nearest(p.x, p.z, 2.5); if (pr) g.props.remove(pr); }
+      }
+    }
+    this.lineStart = null;
+    this.hideLine();
+    g.emit('change');
+  }
+  // curved roads: points near an existing road snap onto it so the joint is clean
+  snap(p) {
+    const g = this.game, i = tileOf(p.x), j = tileOf(p.z);
+    let best = null, bd = 7;
+    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) {
+      if (!g.tiles.isRoad(a, c)) continue;
+      const d = Math.hypot(a * TILE - p.x, c * TILE - p.z);
+      if (d < bd) { bd = d; best = { x: a * TILE, z: c * TILE }; }
+    }
+    return best || { x: Math.round(p.x), z: Math.round(p.z) };
+  }
+
+  // (old free painting, kept for reference: not used)
   paint(p) {
     const g = this.game, i = tileOf(p.x), j = tileOf(p.z);
     const doTile = (a, c) => {
@@ -153,7 +222,7 @@ export class Editor {
   updateCurve(p) {
     if (this.curvePreview) this.game.scene.remove(this.curvePreview);
     const pts = [...this.pts];
-    if (p) pts.push({ x: Math.round(p.x), z: Math.round(p.z) });
+    if (p) pts.push(this.snap(p));
     this.curvePreview = buildCurveMesh(pts, this.tool === 'bridge', true);
     this.game.scene.add(this.curvePreview);
   }

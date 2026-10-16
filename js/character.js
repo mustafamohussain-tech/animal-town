@@ -25,6 +25,7 @@ export class Character {
     this.pants = d.pants || pick(PANTS);
     this.job = 'none';
     this.homeId = d.homeId ?? null;
+    this.pendingJob = d.pendingJob || null;
     // profile: when they arrived, what the follower wishes for, and their social account
     this.joinedAt = d.joinedAt || Date.now();
     // goals written from this follower's comments: [{ text, done, at }]
@@ -52,6 +53,8 @@ export class Character {
     this.P = {};
     this.buildModel();
     this.setJob(d.job && JOBS[d.job] ? d.job : 'none');
+    this.workplaceId = d.workplaceId ?? null;
+    this.workPinned = !!d.workPinned;
     if (d.hurt) this.setHurt(true);
   }
 
@@ -179,6 +182,7 @@ export class Character {
 
   // ---------- state ----------
   setJob(job) {
+    this.workPinned = false;
     this.job = job;
     this.workplaceId = null;
     dress(this, job);
@@ -409,6 +413,6 @@ export class Character {
   }
 
   toJSON() {
-    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, joinedAt: this.joinedAt, goals: this.goals, account: this.account };
+    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, pendingJob: this.pendingJob || null, workplaceId: this.workplaceId, workPinned: !!this.workPinned, joinedAt: this.joinedAt, goals: this.goals, account: this.account };
   }
 }

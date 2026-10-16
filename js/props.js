@@ -4,6 +4,7 @@ import { box, cyl, ball, mesh, sphere, rand, pick, mergeStatic, shadows, dist2d 
 import { NIGHT, addGlow } from './daynight.js';
 import { TILE } from './path.js';
 import { LEAVES } from './world.js';
+import { makeBusStop } from './bus.js';
 
 export const PROP_TYPES = {
   lamp: { emoji: '💡', block: .4 },
@@ -11,6 +12,7 @@ export const PROP_TYPES = {
   tree: { emoji: '🌳', block: .8 },
   bench: { emoji: '🪑', block: 1.2 },
   flowers: { emoji: '🌷', block: 0 },
+  busstop: { emoji: '🚏', block: 1.2 },
 };
 const LIGHT_COLORS = ['#2ecc40', '#ffcf3f', '#ff3b30'];
 
@@ -56,6 +58,8 @@ export class Props {
       box(2.4, .12, .8, '#a0703f', 0, .6, 0, g);
       box(2.4, .7, .1, '#a0703f', 0, 1.05, -.38, g);
       for (const s of [-1, 1]) box(.1, .6, .7, '#555555', s * 1.05, .3, 0, g);
+    } else if (type === 'busstop') {
+      makeBusStop(this.game, g);
     } else if (type === 'flowers') {
       box(2.2, .3, 1.2, '#8b5a2b', 0, .15, 0, g);
       for (let k = 0; k < 10; k++) ball(.16, pick(['#ff7aa2', '#ffd23f', '#ffffff', '#b48cff', '#ff5d5d']), rand(-.9, .9), .38, rand(-.4, .4), g);

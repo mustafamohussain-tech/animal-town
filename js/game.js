@@ -8,6 +8,8 @@ import { Props } from './props.js';
 import { Curves } from './curves.js';
 import { Vehicles, CAR_TYPES } from './vehicles.js';
 import { foundedAt } from './save.js';
+import { Events } from './events.js';
+import { BusService } from './bus.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
 import { Character } from './character.js';
@@ -32,6 +34,8 @@ export class Game {
     this.props = new Props(this);
     this.curves = new Curves(this);
     this.vehicles = new Vehicles(this);
+    this.events = new Events(this);
+    this.bus = new BusService(this);
     this.founded = foundedAt();   // day 1 of the town (never reset)
     this.screenMode = 'phone';   // phone (9:16) | pc (16:9) | fill
     this.town = new Town(this);
@@ -41,7 +45,8 @@ export class Game {
     this.selectedBuilding = null;
     this.followNew = true;
     this.nightSleep = true;
-    this.showCard = true;       // resident profile card on screen
+    this.showCard = true;
+    this.buildDuration = 7 * 86400000; // how long a construction takes (real time)       // resident profile card on screen
     this.choosePlace = false;   // when true, typed build commands also let you pick the spot
     this.handlers = {};
     this.bannerEl = frame.querySelector('#banners');
@@ -56,6 +61,7 @@ export class Game {
   newTown() {
     for (let k = -3; k <= 3; k++) { this.tiles.setRoad(k, 0, true); this.tiles.setRoad(0, k, true); }
     this.props.sprinkle(2, this.world.landR);
+    this.bus.ensureStop();
   }
   expandLand(n = 3) {
     const old = this.world.landR;
@@ -92,7 +98,9 @@ export class Game {
     if (this.findChar(raw)) return { error: t('nameTaken', { name: '@' + raw }) };
     const c = new Character(this, { ...d, name: '@' + raw });
     const home = this.town.get(c.homeId);
-    const p = home?.complete ? home.spot('door') : this.world.spawnPoint();
+    // people appear at home, or next to the bus stop
+    const geo = this.bus.geometry();
+    const p = home?.complete ? home.spot('door') : geo ? geo.spot(Math.random() * 3) : this.world.spawnPoint();
     c.root.position.set(p.x, 0, p.z);
     this.scene.add(c.root);
     this.chars.push(c);
@@ -100,7 +108,9 @@ export class Game {
       this.effects.emit('confetti', { x: p.x, y: 2.6, z: p.z }, 50);
       this.effects.emit('sparkle', { x: p.x, y: 1.5, z: p.z }, 8);
       this.announce(t('joined', { name: c.name }));
-      c.command([wait(2.5, 'wave', { onStart: x => x.say('👋') })], false);
+      // they arrive on the bus, step off and wave
+      const byBus = this.bus.arrive(c);
+      c.command([...(byBus ? [{ name: 'bus', update: x => !x.inBus }] : []), wait(2.5, 'wave', { onStart: x => x.say('👋') })], false);
       if (this.followNew) this.select(c, true);
       this.giveHomes();
     }
@@ -178,6 +188,11 @@ export class Game {
     const type = JOBS[c.job]?.place;
     if (!type) return null;
     const cur = this.town.get(c.workplaceId);
+    // hired at one exact building (or by its owner): only work there
+    if (c.workPinned) {
+      if (cur) return cur.complete && cur.alive ? cur : null;
+      c.workPinned = false;
+    }
     if (cur && cur.kind === type && cur.complete && cur.alive) return cur;
     const options = this.town.of(type);
     if (!options.length) return null;
@@ -189,6 +204,35 @@ export class Game {
   workerIndex(c, b) { return this.chars.filter(x => x.workplaceId === b.id).sort((a, z) => a.id - z.id).indexOf(c); }
   workerAt(b) { return this.chars.find(x => x.workplaceId === b.id && x.activity?.name === 'work') || null; }
   jobLabel(job) { return t('job_' + job); }
+
+  // the job a building offers (null = nobody works there)
+  jobAt(b) { return (b && Object.keys(JOBS).find(k => JOBS[k].place === b.kind)) || null; }
+  // a business someone owns, for "@ali work for @sara"
+  businessOf(owner, kind) {
+    const list = this.town.all.filter(b => b.ownerId === owner.id && this.jobAt(b) && (!kind || b.kind === kind));
+    return list.sort((a, z) => z.complete - a.complete)[0] || null;
+  }
+  // c works at this exact building (for its owner, if it has one)
+  hire(c, b) {
+    const job = this.jobAt(b);
+    if (!job) return this.log(t('cantHire', { b: b.displayName() }));
+    const boss = this.getChar(b.ownerId);
+    const msg = boss && boss !== c ? t('hiredFor', { name: c.name, o: boss.name, b: b.displayName(), emoji: JOBS[job].emoji })
+      : t('hired', { name: c.name, b: b.displayName(), emoji: JOBS[job].emoji });
+    if (b.complete) {
+      c.setJob(job);
+      c.workplaceId = b.id;
+      c.workPinned = true;
+      c.pendingJob = null;
+      c.command([wait(1.6, 'cheer', { onStart: x => x.say(JOBS[job].emoji) })]);
+    } else {
+      // not open yet: they help build it and start working when it opens
+      c.pendingJob = { job, buildingId: b.id };
+      c.command([buildAct(b), wait(2, 'cheer', { onStart: x => x.say('🔨') })]);
+    }
+    this.emit('change');
+    return this.announce(msg);
+  }
 
   assignJob(c, job) {
     if (!JOBS[job]) return null;
@@ -216,7 +260,9 @@ export class Game {
       if (!spot) return this.log(t('noSpace'));
       site = this.town.create(spec, spot.i, spot.j, spot.rot, { builtBy: c.id });
     }
-    c.command([buildAct(site), call(x => done(x)), wait(2, 'cheer', { onStart: x => x.say('🎉') })]);
+    // the job starts when the building is finished (it takes real time now)
+    c.pendingJob = { job, buildingId: site.id };
+    c.command([buildAct(site), wait(2, 'cheer', { onStart: x => x.say('🔨') })]);
     this.emit('change');
     return this.log(t('needsPlace', { name: c.name, b: site.displayName(), job: this.jobLabel(job) }));
   }
@@ -270,6 +316,15 @@ export class Game {
 
   onBuilt(b) {
     this.announce(t('built', { emoji: b.emoji, b: b.displayName() }));
+    for (const c of this.chars) {
+      if (c.pendingJob?.buildingId !== b.id) continue;
+      const job = c.pendingJob.job;
+      c.pendingJob = null;
+      c.setJob(job);
+      c.workplaceId = b.id;
+      c.workPinned = true;
+      this.announce(t('nowJob', { name: c.name, job: this.jobLabel(job), emoji: JOBS[job].emoji }));
+    }
     const job = Object.keys(JOBS).find(j => JOBS[j].place === b.kind);
     if (job && this.town.of(b.kind).length === 1) {
       setTimeout(() => this.announce(t('unlocked', { emoji: JOBS[job].emoji, job: this.jobLabel(job) })), 900);
@@ -359,7 +414,7 @@ export class Game {
     this.emit('change');
   }
 
-  setHour(h) { this.daynight.hour = ((h % 24) + 24) % 24; this.daynight.apply(); }
+  setHour(h) { this.daynight.setHour(h); }
 
   // ---------- picking with the mouse ----------
   setupPicking() {
@@ -404,6 +459,8 @@ export class Game {
     this.town.update(dt, tm);
     this.props.update(dt, tm);
     this.vehicles.update(dt);
+    this.events.update(dt);
+    this.bus.update(dt);
     this.effects.update(dt);
     this.world.update(dt);
     this.director.update(dt);
@@ -452,7 +509,7 @@ export class Game {
     }
     for (const c of this.chars) {
       const b = c.bld;
-      const hiddenFloor = b && b.viewFloorMax != null && c.root.position.y > b.viewFloorMax * FH + 1;
+      const hiddenFloor = c.inBus || (b && b.viewFloorMax != null && c.root.position.y > b.viewFloorMax * FH + 1);
       const insideClosed = b && b.complete && !b.isCut && c !== this.selected;
       c.root.visible = !hiddenFloor;
       c.label.visible = !hiddenFloor && !insideClosed;

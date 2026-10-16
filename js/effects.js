@@ -30,6 +30,7 @@ const KINDS = {
   heart: { emoji: ['❤️', '💚', '💛'], size: [.4, .55], life: [1.2, 1.6], spread: .5, up: [.6, 1], grav: 0 },
   zzz: { emoji: ['💤'], size: [.45, .75], life: [1.8, 2.4], spread: .15, up: [.4, .6], grav: 0 },
   note: { emoji: ['🎵', '🎶'], size: [.4, .5], life: [1.2, 1.6], spread: .6, up: [.6, 1], grav: 0 },
+  spark: { tex: SOFT, colors: ['#ff5d73', '#ffcf3f', '#5fb3ff', '#7be07b', '#c38bff'], size: [.9, .15], life: [1.2, 1.9], spread: 9, up: [-6, 6], grav: -2.5, op: 1, add: true },
   confetti: { tex: SQUARE, colors: ['#ff5d73', '#ffcf3f', '#5fb3ff', '#7be07b', '#c38bff'], size: [.18, .18], life: [1.6, 2.4], spread: 3.2, up: [3, 6.5], grav: -6, spin: true },
 };
 

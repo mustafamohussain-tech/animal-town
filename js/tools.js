@@ -51,6 +51,16 @@ export function makeTool(name) {
       mesh(sphere(.09), '#7fb8e0', 0, -.04, .16, g).scale.set(.55, 1, 2);
       mesh(sphere(.06), '#5a9cc8', 0, -.04, -.04, g).scale.set(.3, 1, .6);
       break;
+    case 'umbrella': {
+      const c = pick(['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71']);
+      cyl(.02, .02, 1.6, '#555555', 0, .75, 0, g, 6);
+      mesh(new THREE.ConeGeometry(1.1, .45, 10), c, 0, 1.6, 0, g);
+      break;
+    }
+    case 'broom':
+      cyl(.025, .025, 1.2, '#a0703f', 0, 0, .35, g).rotation.x = Math.PI / 2;
+      box(.35, .18, .25, '#d9b45a', 0, -.05, .95, g);
+      break;
     case 'bag': {
       const c = pick(['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71']);
       box(.24, .28, .12, c, 0, -.2, 0, g);

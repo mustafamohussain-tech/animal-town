@@ -33,6 +33,7 @@ if (params.has('view') || (online && !params.has('edit'))) {
     } catch { /* offline: try again later */ }
   }, 90000);
 } else if (!loadGame(game)) game.newTown();
+game.bus.ensureStop(); // older towns get a bus stop too
 const ui = new UI(game);
 // background music: browsers only allow sound after a click, so a saved "music on" starts at the first click
 const music = game.music = new Music();

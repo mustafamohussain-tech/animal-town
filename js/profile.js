@@ -56,8 +56,10 @@ export function belongings(c) {
     else if (b.builtBy === c.id && b.ownerId !== c.id) out.push(b.complete ? ['🏗️', t('builtB', { b: b.displayName() })] : ['🔨', t('buildingB', { b: `${b.displayName()} (${Math.floor(b.progress * 100)}%)` })]);
   }
   for (const v of g.vehicles.ofOwner(c.id)) out.push(['🚗', t('car_' + v.type)]);
-  const wp = g.town.get(c.workplaceId);
-  if (wp && c.job !== 'none') out.push([JOBS[c.job].emoji, t('worksAt', { b: wp.displayName() })]);
+  const wp = g.town.get(c.workplaceId), boss = wp && g.getChar(wp.ownerId);
+  if (wp && c.job !== 'none') out.push([JOBS[c.job].emoji, boss && boss !== c ? t('worksFor', { o: boss.name, b: wp.displayName() }) : t('worksAt', { b: wp.displayName() })]);
+  const next = c.pendingJob && g.town.get(c.pendingJob.buildingId);
+  if (next) out.push(['⏳', t('startsAt', { b: next.displayName() })]);
   if (c.carry) out.push(['🛍️', t('bag')]);
   return out;
 }
@@ -153,6 +155,88 @@ export class ProfileCard {
     if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('noBelongings'); ul.appendChild(li); }
     if (list.length > 5) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = '+' + (list.length - 5); ul.appendChild(li); }
     for (const [e, txt] of list.slice(0, 5)) { const li = document.createElement('li'); li.textContent = `${e} ${txt}`; li.dir = 'auto'; ul.appendChild(li); }
+  }
+}
+
+// "3 d 4 h" / "5 h 20 min" / "12 min"
+export function fmtDur(ms) {
+  const m = Math.max(1, Math.ceil(ms / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+  if (d) return t('dur_d', { d, h });
+  if (h) return t('dur_h', { h, m: mm });
+  return t('dur_m', { m: mm });
+}
+export function fmtDate(ms) {
+  return new Date(ms).toLocaleDateString(getLang() === 'ar' ? 'ar' : 'en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+// people who work (or will work) in a building
+export function staffOf(game, b) {
+  return game.chars.filter(c => (c.workplaceId === b.id && c.job !== 'none') || c.pendingJob?.buildingId === b.id);
+}
+
+// the building card shown inside the game frame: what it is, who owns it, construction time, staff
+export class BuildingCard {
+  constructor(game) {
+    this.game = game;
+    this.el = document.getElementById('bld-card');
+    this.b = null;
+    document.getElementById('bc-close').onclick = () => { this.hide(); game.selectBuilding(null); };
+    setInterval(() => this.update(), 1000);
+  }
+  show(b) {
+    this.b = b;
+    if (!b || !this.game.showCard) { this.el.classList.add('hidden'); return; }
+    this.el.classList.remove('hidden');
+    this.update();
+  }
+  hide() { this.b = null; this.el.classList.add('hidden'); }
+  update() {
+    const b = this.b, g = this.game;
+    if (!b || this.el.classList.contains('hidden')) return;
+    if (!g.town.all.includes(b)) { this.hide(); return; }
+    const $ = id => document.getElementById(id);
+    $('bc-emoji').textContent = b.emoji;
+    $('bc-name').textContent = b.displayName();
+    $('bc-kind').textContent = t('b_' + b.kind);
+    const pct = Math.floor(b.progress * 100);
+    $('bc-dot').className = b.complete ? '' : 'build';
+    $('bc-status').textContent = b.complete ? `${t('openSince')} ${fmtDate(b.startedAt + b.duration)}`
+      : `🔨 ${t('underConstruction')} · ${pct}% · ${t('finishIn', { t: fmtDur(b.remaining) })}`;
+    $('bc-prog').classList.toggle('hidden', b.complete);
+    $('bc-prog').firstElementChild.style.width = pct + '%';
+
+    const rows = $('bc-rows');
+    rows.textContent = '';
+    const row = (k, val) => {
+      const r = document.createElement('div');
+      const s1 = document.createElement('span'); s1.textContent = k;
+      const s2 = typeof val === 'string' ? document.createElement('b') : val;
+      if (typeof val === 'string') s2.textContent = val;
+      s2.dir = 'auto';
+      r.append(s1, s2);
+      rows.appendChild(r);
+    };
+    const owner = g.getChar(b.ownerId);
+    if (owner) {
+      const url = accountUrl(owner.account);
+      const a = document.createElement(url ? 'a' : 'b');
+      a.textContent = owner.name + (url ? ' ↗' : '');
+      if (url) { a.href = url; a.target = '_blank'; a.rel = 'noopener'; }
+      row('🔑 ' + t('ownerL'), a);
+    } else row('🔑 ' + t('ownerL'), t('publicB'));
+    const builder = g.getChar(b.builtBy);
+    if (builder) row('🏗️ ' + t('builtByL'), builder.name);
+    row('🏢 ' + t('floorsL'), String(b.spec.floors));
+    row('📅 ' + t('startedL'), fmtDate(b.startedAt));
+    if (b.residents.length) row('🛏️ ' + t('residentsL'), String(b.residents.length));
+
+    const staff = staffOf(g, b), ul = $('bc-emp');
+    $('bc-staff').style.display = g.jobAt(b) || staff.length ? '' : 'none';
+    $('bc-emp-n').textContent = staff.length;
+    ul.textContent = '';
+    const li = (txt, cls) => { const x = document.createElement('li'); x.textContent = txt; x.dir = 'auto'; if (cls) x.className = cls; ul.appendChild(x); };
+    if (!staff.length) li(t('noEmployees'), 'empty');
+    for (const c of staff.slice(0, 5)) li(c.pendingJob?.buildingId === b.id ? `⏳ ${c.name}` : `${JOBS[c.job].emoji} ${c.name}`);
+    if (staff.length > 5) li('+' + (staff.length - 5), 'empty');
   }
 }
 
