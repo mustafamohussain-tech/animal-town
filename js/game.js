@@ -113,6 +113,7 @@ export class Game {
       c.command([...(byBus ? [{ name: 'bus', update: x => !x.inBus }] : []), wait(2.5, 'wave', { onStart: x => x.say('👋') })], false);
       if (this.followNew) this.select(c, true);
       this.giveHomes();
+      this.emit('joined', c);
     }
     this.emit('change');
     return c;

@@ -130,6 +130,21 @@
     </section>
 
     <section class="card">
+      <h2>⏺️ <span data-i18n="rec"></span> <span id="rec-state" class="pill rec-state"></span></h2>
+      <div class="btn-row">
+        <button id="rec-arm" class="primary"></button>
+        <button id="rec-btn"></button>
+      </div>
+      <div class="btn-row"><button id="rec-folder"></button></div>
+      <label class="check"><input type="checkbox" id="rec-join"> <span data-i18n="recOnJoin"></span></label>
+      <label class="check"><input type="checkbox" id="rec-event"> <span data-i18n="recOnEvent"></span></label>
+      <label class="fld wide"><span data-i18n="recClip"></span><select id="rec-clip"></select></label>
+      <label class="fld wide"><span data-i18n="recSeg"></span><select id="rec-seg"></select></label>
+      <p id="rec-info" class="hint"></p>
+      <p class="hint" data-i18n="recHint"></p>
+    </section>
+
+    <section class="card">
       <h2>📅 <span data-i18n="calendar"></span></h2>
       <p class="hint" data-i18n="calHint"></p>
       <div id="cal-grid" class="cal-grid"></div>

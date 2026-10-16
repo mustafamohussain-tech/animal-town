@@ -3,6 +3,7 @@ import { Game } from './game.js';
 import { UI } from './ui.js';
 import { loadGame, saveGame, loadData } from './save.js';
 import { Music } from './music.js';
+import { Recorder } from './recorder.js';
 
 const stage = document.getElementById('stage');
 const frame = document.getElementById('frame');
@@ -39,6 +40,7 @@ const ui = new UI(game);
 const music = game.music = new Music();
 music.setVolume(game.savedMusic?.vol ?? .5);
 ui.setupMusic(music);
+ui.setupRecorder(game.recorder = new Recorder(game, music));
 if (game.savedMusic?.on) {
   const go = () => { if (!music.on) { music.start(); ui.renderMusic(); } removeEventListener('pointerdown', go); removeEventListener('keydown', go); };
   addEventListener('pointerdown', go);

@@ -11,6 +11,7 @@ button, input { font: inherit; color: inherit; }
 /* ---------- game stage (the 9:16 frame you record) ---------- */
 #stage { flex: 1; position: relative; min-width: 0; background: radial-gradient(circle at 50% 40%, #1b2132, #0d1017); }
 #frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); overflow: hidden; background: #a9dcff; }
+#frame { isolation: isolate; } /* lets the recorder capture just this element */
 #frame canvas { display: block; touch-action: none; }
 #hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center;
   pointer-events: none; z-index: 2; }
@@ -189,6 +190,8 @@ select { background: #141926; border: 1px solid var(--line); border-radius: 8px;
 .bc-prog.hidden { display: none; }
 .bc-prog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #f0ad4e, #ffcf3f); transition: width .5s; }
 .pc-rows a { color: #6b8a5a; font-weight: 600; text-decoration: none; }
+.rec-state.on { background: #e5383b; color: #fff; animation: recblink 1s steps(2) infinite; }
+@keyframes recblink { 50% { opacity: .55; } }
 .staff-list { list-style: none; margin: 4px 0 8px; padding: 0; }
 .staff-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 0; font-size: 13px; }
 .staff-list li.empty { color: #8a93a0; font-style: italic; }

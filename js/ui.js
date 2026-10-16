@@ -314,6 +314,62 @@ export class UI {
     dlg.showModal();
   }
 
+  // ---------- recording ----------
+  setupRecorder(rec) {
+    this.rec = rec;
+    const fill = (id, list, val) => {
+      const s = $(id);
+      s.textContent = '';
+      for (const [v, label] of list) { const o = el('option', null, label); o.value = v; s.appendChild(o); }
+      s.value = String(val);
+    };
+    this.fillRec = () => {
+      fill('rec-clip', [15, 30, 60, 90].map(n => [n, t('secN', { n })]), rec.opts.clipSec);
+      fill('rec-seg', [[0, t('recSegNone')], ...[5, 10, 30, 60].map(n => [n, t('minN', { n })])], rec.opts.segMin);
+    };
+    this.fillRec();
+    $('rec-arm').onclick = async () => {
+      if (rec.armed) { rec.disarm(); return; }
+      try { await rec.arm(); } catch (e) { this.addLog(t('recDenied')); }
+    };
+    $('rec-btn').onclick = async () => {
+      if (rec.recording) { rec.stop(); return; }
+      try { if (!rec.armed) await rec.arm(); rec.start('manual'); } catch (e) { this.addLog(t('recDenied')); }
+    };
+    $('rec-folder').onclick = async () => {
+      try { await rec.pickFolder(); } catch (e) { /* cancelled */ }
+    };
+    $('rec-join').onchange = e => rec.setOpt('onJoin', e.target.checked);
+    $('rec-event').onchange = e => rec.setOpt('onEvent', e.target.checked);
+    $('rec-clip').onchange = e => rec.setOpt('clipSec', +e.target.value);
+    $('rec-seg').onchange = e => rec.setOpt('segMin', +e.target.value);
+    this.game.on('recorder', () => this.renderRecorder());
+    setInterval(() => { if (rec.recording) this.renderRecorder(); }, 1000);
+    this.renderRecorder();
+  }
+  renderRecorder() {
+    const rec = this.rec;
+    if (!rec) return;
+    const on = rec.recording, s = Math.floor(rec.elapsed / 1000);
+    const st = $('rec-state');
+    st.textContent = on ? '● ' + t('recOn', { t: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }) : rec.armed ? t('recReady') : '';
+    st.classList.toggle('on', on);
+    st.style.display = st.textContent ? '' : 'none';
+    $('rec-arm').textContent = rec.armed ? '✅ ' + t('recDisarm') : '🎥 ' + t('recArm');
+    $('rec-arm').classList.toggle('primary', !rec.armed);
+    $('rec-btn').textContent = on ? '⏹️ ' + t('recStop') : '⏺️ ' + t('recStart');
+    $('rec-btn').classList.toggle('danger', on);
+    $('rec-folder').textContent = '📁 ' + (rec.dir ? t('recFolder', { d: rec.dir.name }) : t('recFolderNone'));
+    $('rec-folder').style.display = rec.canPickFolder ? '' : 'none';
+    $('rec-join').checked = rec.opts.onJoin;
+    $('rec-event').checked = rec.opts.onEvent;
+    const info = [];
+    if (rec.canvasOnly && rec.armed) info.push(t('recCanvasOnly'));
+    if (rec.saved) info.push(t('recFiles', { n: rec.saved, f: rec.lastFile }));
+    $('rec-info').textContent = info.join(' · ');
+    document.title = (on ? '🔴 ' : '') + t('title');
+  }
+
   // ---------- music ----------
   setupMusic(music) {
     this.music = music;
@@ -363,6 +419,7 @@ export class UI {
     document.querySelectorAll('[data-i18n-title]').forEach(e => { e.title = t(e.dataset.i18nTitle); });
     $('btn-lang').textContent = lang === 'ar' ? 'English' : 'العربية';
     document.title = t('title');
+    if (this.fillRec) { this.fillRec(); this.renderRecorder(); }
     this.buildAnimalGrid();
     this.renderBuildMenu();
     this.renderTools();

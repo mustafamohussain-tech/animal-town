@@ -193,6 +193,7 @@ export class Events {
     if (key === 'rain') this.makeRain();
     g.announce(t('eventToday', { e: t('ev_' + key), emoji: t('evE_' + key) }));
     for (const ch of g.chars) if (!ch.commanded) ch.interrupt();
+    g.emit('event', key);
     g.emit('change');
   }
 

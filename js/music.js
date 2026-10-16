@@ -24,6 +24,7 @@ export class Music {
     this.master = ctx.createGain();
     this.master.gain.value = this.volume * 1.1;
     const comp = ctx.createDynamicsCompressor();
+    this.comp = comp;
     this.master.connect(comp).connect(ctx.destination);
     // a soft room echo
     this.verb = ctx.createConvolver();
@@ -46,7 +47,15 @@ export class Music {
 
   start() {
     this.on = true;
-    if (this.audio) { this.audio.volume = this.volume; this.audio.play().catch(() => {}); return; }
+    if (this.audio) {
+      // the player's file also goes through the sound engine, so recordings hear it
+      this.setup();
+      this.ctx.resume();
+      if (!this.audio.srcNode) { this.audio.srcNode = this.ctx.createMediaElementSource(this.audio); this.audio.srcNode.connect(this.comp); }
+      this.audio.volume = this.volume;
+      this.audio.play().catch(() => {});
+      return;
+    }
     this.setup();
     this.ctx.resume();
     if (this.timer) return;
@@ -58,7 +67,13 @@ export class Music {
     if (this.audio) this.audio.pause();
     clearInterval(this.timer);
     this.timer = null;
-    if (this.ctx) this.ctx.suspend();
+    if (this.ctx && !this.keepAlive) this.ctx.suspend(); // a recording keeps it running
+  }
+  // the music as an audio track for the video recorder
+  recordStream() {
+    this.setup();
+    if (!this.recDest) { this.recDest = this.ctx.createMediaStreamDestination(); this.comp.connect(this.recDest); }
+    return this.recDest.stream;
   }
   toggle() { if (this.on) this.stop(); else this.start(); return this.on; }
   setVolume(v) {
