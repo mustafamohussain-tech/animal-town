@@ -1,0 +1,5 @@
+# local tools / test files (not part of the website)
+.claude/
+preview-animals.html
+__pycache__/
+*.log

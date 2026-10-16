@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Animal Town</title>
+<meta name="description" content="A little 3D town where every follower is an animal resident. Find your resident!">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐾%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <main id="stage">
+    <div id="frame">
+      <div id="hud">
+        <div id="hud-title">🐾 <span data-i18n="title">Animal Town</span></div>
+        <div class="hud-right"><div id="hud-day">📅</div><div id="hud-clock">☀️ 09:00</div><div id="hud-count">🐾 0</div></div>
+      </div>
+      <div id="banners"></div>
+      <div id="viewer-bar" class="viewer-bar">
+        <div class="vb-row"><span>🔍</span><input id="vb-search" data-i18n-ph="searchPh" autocomplete="off" dir="auto"><button id="vb-lang">ع</button></div>
+        <div id="vb-results" class="vb-results"></div>
+        <small data-i18n="viewerHint"></small>
+      </div>
+      <div id="profile-card" class="pcard hidden">
+        <div class="pc-top"><span data-i18n="meetNeighbor"></span><button id="pc-close" aria-label="close">✕</button></div>
+        <div class="pc-head">
+          <div class="pc-photo"><img id="pc-portrait" alt=""><span id="pc-emoji"></span></div>
+          <div class="pc-who"><b id="pc-name" dir="auto"></b><a id="pc-handle" target="_blank" rel="noopener"></a></div>
+        </div>
+        <div class="pc-status"><i></i><span id="pc-status"></span></div>
+        <div class="pc-goal"><small data-i18n="goals"></small><ul id="pc-goals" class="pc-goals"></ul></div>
+        <div id="pc-rows" class="pc-rows"></div>
+        <div class="pc-bel"><b><span data-i18n="belongings"></span> (<span id="pc-bel-n">0</span>)</b><ul id="pc-bel"></ul></div>
+      </div>
+    </div>
+    <button id="show-panel" data-i18n-title="showPanel">⚙️</button>
+  </main>
+
+  <aside id="panel">
+    <header class="top">
+      <h1>🐾 <span data-i18n="title">Animal Town</span></h1>
+      <div class="top-btns">
+        <button id="btn-lang">العربية</button>
+        <button id="btn-hide" class="icon" data-i18n-title="hide">🙈</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>➕ <span data-i18n="newFollower"></span></h2>
+      <div class="row-in">
+        <input id="in-name" data-i18n-ph="namePh" autocomplete="off" maxlength="24" dir="auto">
+        <button id="btn-add" class="primary" data-i18n="add"></button>
+      </div>
+      <div id="animal-grid" class="animal-grid"></div>
+      <label class="check"><input type="checkbox" id="chk-follow" checked> <span data-i18n="followNew"></span></label>
+      <button id="btn-bulk" class="wide">👥 <span data-i18n="addMany"></span></button>
+    </section>
+
+    <section class="card">
+      <h2>🖥️ <span data-i18n="screen"></span></h2>
+      <div id="screen-btns" class="chips">
+        <button class="chip-btn" data-mode="phone">📱 <span data-i18n="scr_phone"></span></button>
+        <button class="chip-btn" data-mode="pc">🖥️ <span data-i18n="scr_pc"></span></button>
+        <button class="chip-btn" data-mode="fill">⬛ <span data-i18n="scr_fill"></span></button>
+      </div>
+      <button id="btn-full" class="wide">⛶ <span data-i18n="fullscreen"></span></button>
+    </section>
+
+    <section class="card">
+      <h2>💬 <span data-i18n="command"></span></h2>
+      <div class="row-in">
+        <input id="in-cmd" data-i18n-ph="cmdPh" autocomplete="off" dir="auto">
+        <button id="btn-cmd" class="primary" data-i18n="run"></button>
+      </div>
+      <p id="cmd-result" class="result" dir="auto"></p>
+      <p class="hint" data-i18n="cmdHelp"></p>
+    </section>
+
+    <section class="card" id="sel-card"></section>
+
+    <section class="card">
+      <h2>🏗️ <span data-i18n="buildMenu"></span></h2>
+      <div id="b-types" class="grid four"></div>
+      <div id="b-style-row"><h3 data-i18n="style"></h3><div id="b-styles" class="chips"></div></div>
+      <div id="b-variant-row"><div id="b-variants" class="chips"></div></div>
+      <div id="b-floor-row" class="range-row"><h3><span data-i18n="floors"></span>: <b id="b-floors-n">1</b></h3><input id="b-floors" type="range" min="1" max="3" step="1"></div>
+      <p id="b-builder" class="hint"></p>
+      <button id="b-place" class="primary wide">📍 <span data-i18n="placeIt"></span></button>
+      <h3>✨ <span data-i18n="myDesigns"></span></h3>
+      <div id="designs" class="designs"></div>
+      <div class="btn-row">
+        <button id="d-new">✏️ <span data-i18n="newDesign"></span></button>
+        <button id="d-photo">📷 <span data-i18n="fromPhoto"></span></button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>🛣️ <span data-i18n="tools"></span></h2>
+      <div id="tool-grid" class="grid four"></div>
+      <p id="tool-hint" class="hint"></p>
+      <button id="tool-done" class="primary wide">✅ <span data-i18n="toolDone"></span></button>
+    </section>
+
+    <section class="card">
+      <h2>🎥 <span data-i18n="camera"></span></h2>
+      <div id="cam-grid" class="grid"></div>
+      <div id="floor-row" class="floor-row">
+        <button id="floor-down">▼</button><b id="floor-n"></b><button id="floor-up">▲</button>
+        <button id="floor-exit">🚪 <span data-i18n="cam_exit"></span></button>
+      </div>
+      <p class="hint" data-i18n="camHint"></p>
+    </section>
+
+    <section class="card">
+      <h2>🕒 <span data-i18n="time"></span> <b id="clock-big" class="clock"></b></h2>
+      <input id="time-range" type="range" min="0" max="23.99" step="0.05">
+      <div class="btn-row">
+        <button id="btn-day">☀️ <span data-i18n="day"></span></button>
+        <button id="btn-night">🌙 <span data-i18n="night"></span></button>
+        <button id="btn-pause"></button>
+      </div>
+      <label class="check"><input type="checkbox" id="chk-sleep" checked> <span data-i18n="nightSleep"></span></label>
+    </section>
+
+    <section class="card">
+      <h2>🎵 <span data-i18n="music"></span></h2>
+      <div class="btn-row"><button id="music-toggle" class="primary"></button></div>
+      <div class="range-row"><h3 data-i18n="volume"></h3><input id="music-vol" type="range" min="0" max="1" step="0.05"></div>
+      <p id="music-src" class="hint"></p>
+      <div class="btn-row">
+        <label class="file-btn">📁 <span data-i18n="musicFile"></span><input id="music-file" type="file" accept="audio/*"></label>
+        <button id="music-builtin">🎹</button>
+      </div>
+      <p class="hint" data-i18n="musicHint"></p>
+    </section>
+
+    <section class="card">
+      <h2>🏘️ <span data-i18n="town"></span></h2>
+      <div id="town-stats" class="town-stats"></div>
+      <p id="land-size" class="hint"></p>
+      <div class="btn-row">
+        <button id="btn-expand">🌍 <span data-i18n="expand"></span></button>
+        <button id="btn-fire">🔥 <span data-i18n="fire"></span></button>
+      </div>
+      <p class="hint" data-i18n="publishHint"></p>
+      <input id="in-site" data-i18n-ph="sitePh" dir="ltr" autocomplete="off">
+      <label class="check"><input type="checkbox" id="chk-askplace"> <span data-i18n="askPlace"></span></label>
+      <div class="btn-row">
+        <button id="btn-export">💾 <span data-i18n="exportT"></span></button>
+        <label class="file-btn">📂 <span data-i18n="importT"></span><input id="in-import" type="file" accept=".json,application/json"></label>
+      </div>
+      <div class="btn-row"><button id="btn-reset" class="danger">🗑️ <span data-i18n="reset"></span></button></div>
+    </section>
+
+    <section class="card">
+      <h2>🐾 <span data-i18n="citizens"></span> <span id="cit-count" class="pill">0</span></h2>
+      <input id="in-search" data-i18n-ph="search" autocomplete="off" dir="auto">
+      <div id="cit-list" class="cit-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>📜 <span data-i18n="log"></span></h2>
+      <ul id="log" class="log"></ul>
+    </section>
+  </aside>
+</div>
+
+<dialog id="bulk" class="dlg">
+  <h2>👥 <span data-i18n="bulkTitle"></span></h2>
+  <p class="hint" data-i18n="bulkHint"></p>
+  <label class="file-btn">📂 <span data-i18n="bulkFile"></span><input id="bulk-file" type="file" accept=".json,.txt,.csv,.html"></label>
+  <textarea id="bulk-text" rows="8" dir="auto" placeholder="sara_art&#10;ali.99&#10;@mona"></textarea>
+  <label class="fld"><span data-i18n="platformL"></span>
+    <select id="bulk-platform"><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="youtube">YouTube</option></select></label>
+  <p id="bulk-status" class="result"></p>
+  <div class="btn-row"><button id="bulk-go" class="primary" data-i18n="bulkGo"></button><button id="bulk-cancel" data-i18n="cancel"></button></div>
+</dialog>
+
+<dialog id="designer">
+  <h2>🏗️ <span data-i18n="designer"></span></h2>
+  <div id="d-photo-box" class="photo-box">
+    <p class="hint" data-i18n="photoHint"></p>
+    <label class="fld wide"><span data-i18n="apiKey"></span><input id="d-key" type="password" data-i18n-ph="apiKeyPh" autocomplete="off"></label>
+    <div class="row-in"><input id="d-file" type="file" accept="image/*"><button id="d-analyze" class="primary" data-i18n="analyze"></button></div>
+    <p id="d-status" class="result"></p>
+  </div>
+  <div id="d-form" class="d-form"></div>
+  <div class="btn-row">
+    <button id="d-save" class="primary" data-i18n="save"></button>
+    <button id="d-cancel" data-i18n="cancel"></button>
+  </div>
+</dialog>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
