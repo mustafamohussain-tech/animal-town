@@ -45,7 +45,7 @@ export class Recorder {
   }
   get canTab() { return !!navigator.mediaDevices?.getDisplayMedia && typeof MediaRecorder !== 'undefined'; }
   get canPickFolder() { return 'showDirectoryPicker' in window; }
-  get armed() { return !!this.stream && this.stream.getVideoTracks().some(tr => tr.readyState === 'live'); }
+  get armed() { return !!this.stream && this.raw?.readyState === 'live'; }
   get recording() { return !!this.rec && this.rec.state === 'recording'; }
   get elapsed() { return this.info ? Date.now() - this.info.startedAt : 0; }
   emit() { this.game.emit('recorder'); }
@@ -79,31 +79,79 @@ export class Recorder {
         video: { frameRate: 30 }, audio: false,
         preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude',
       });
-      [video] = s.getVideoTracks();
-      const frame = document.getElementById('frame');
-      // only the game frame, never the panel: Element Capture (newer Chrome), else Region Capture
-      try {
-        if (window.RestrictionTarget && video.restrictTo) await video.restrictTo(await RestrictionTarget.fromElement(frame));
-        else if (window.CropTarget && video.cropTo) await video.cropTo(await CropTarget.fromElement(frame));
-      } catch (e) {
-        try { if (window.CropTarget && video.cropTo) await video.cropTo(await CropTarget.fromElement(frame)); } catch (e2) { console.warn('crop failed', e2); }
-      }
+      // the whole tab comes in; we cut the game frame out of it ourselves (works in every Chrome / Edge,
+      // unlike Element/Region Capture which can silently stop sending pictures)
+      const raw = this.raw = s.getVideoTracks()[0];
+      this.surface = raw.getSettings().displaySurface || 'browser';
+      raw.addEventListener('ended', () => this.disarm());
+      video = await this.compositor(raw);
       this.canvasOnly = false;
     } else {
       // older browsers: just the 3D picture (no names or cards)
       [video] = this.game.world.renderer.domElement.captureStream(30).getVideoTracks();
+      this.raw = video;
       this.canvasOnly = true;
     }
-    video.addEventListener('ended', () => { this.stop(); this.stream = null; this.emit(); });
     this.stream = new MediaStream([video, ...audio]);
     // the save folder may need its permission again after a restart (also needs this click)
     if (this.dir && !(await this.folderReady())) { try { await this.dir.requestPermission({ mode: 'readwrite' }); } catch (e) { /* falls back to Downloads */ } }
     this.emit();
     return true;
   }
+  // plays the tab capture in a hidden <video> and copies just the game frame onto a canvas;
+  // that canvas is what gets recorded (also shown as a live preview in the panel)
+  async compositor(raw) {
+    const v = this.vid = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.srcObject = new MediaStream([raw]);
+    // kept in the page (tiny, invisible) so the browser keeps decoding it
+    v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.appendChild(v);
+    await v.play().catch(() => {});
+    const t0 = Date.now();
+    while (!v.videoWidth && Date.now() - t0 < 5000) await new Promise(r => setTimeout(r, 100));
+    if (!v.videoWidth) { raw.stop(); throw new Error('no picture from the tab'); }
+    const frame = document.getElementById('frame');
+    const fr = frame.getBoundingClientRect(), k = v.videoWidth / innerWidth;
+    // output size = the frame in real pixels (even numbers, at most 1920 tall/wide)
+    const even = n => Math.max(2, Math.round(n / 2) * 2);
+    const fit = Math.min(1, 1920 / Math.max(fr.width * k, fr.height * k));
+    const out = this.out = document.createElement('canvas');
+    out.width = even(fr.width * k * fit);
+    out.height = even(fr.height * k * fit);
+    const ctx = out.getContext('2d');
+    this.lastFrame = performance.now();
+    const draw = () => {
+      if (!this.vid || !v.videoWidth) return;
+      let sx = 0, sy = 0, sw = v.videoWidth, sh = v.videoHeight;
+      if (this.surface === 'browser') {
+        const r = frame.getBoundingClientRect(), kx = v.videoWidth / innerWidth, ky = v.videoHeight / innerHeight;
+        sx = Math.max(0, r.left * kx); sy = Math.max(0, r.top * ky);
+        sw = Math.min(v.videoWidth - sx, r.width * kx); sh = Math.min(v.videoHeight - sy, r.height * ky);
+      }
+      // keep the picture's shape if the screen mode changes while recording
+      const s = Math.min(out.width / sw, out.height / sh), dw = sw * s, dh = sh * s;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(v, sx, sy, sw, sh, (out.width - dw) / 2, (out.height - dh) / 2, dw, dh);
+      this.lastFrame = performance.now();
+    };
+    this.drawTimer = setInterval(draw, 33);
+    return out.captureStream(30).getVideoTracks()[0];
+  }
+  // is the picture still coming in?
+  get picture() { return !this.armed || this.canvasOnly || performance.now() - (this.lastFrame || 0) < 3000; }
+
   disarm() {
     this.stop();
     this.stream?.getTracks().forEach(tr => { if (tr.kind === 'video') tr.stop(); });
+    this.raw?.stop();
+    clearInterval(this.drawTimer);
+    if (this.vid) { this.vid.srcObject = null; this.vid.remove(); this.vid = null; }
+    this.out?.remove();
+    this.out = null;
+    this.raw = null;
     this.stream = null;
     this.music.keepAlive = false;
     this.emit();
