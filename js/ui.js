@@ -63,7 +63,7 @@ export class UI {
     $('reset-sure').onchange = e => { $('reset-town').disabled = $('reset-all').disabled = !e.target.checked; };
     $('reset-backup').onclick = () => exportTown(game);
     $('reset-cancel').onclick = () => rd.close();
-    const wipe = all => { if (all) clearAll(); else clearSave(); game.noSave = true; location.reload(); };
+    const wipe = async all => { game.noSave = true; if (all) await clearAll(); else await clearSave(); location.reload(); };
     $('reset-town').onclick = () => wipe(false);
     $('reset-all').onclick = () => wipe(true);
     this.setupTabs();
@@ -80,7 +80,8 @@ export class UI {
     $('in-import').onchange = async e => {
       const f = e.target.files[0];
       if (!f || !confirm(t('importConfirm'))) return;
-      try { await importTown(f); game.noSave = true; location.reload(); } catch (err) { this.addLog('⚠️ ' + err.message); }
+      game.noSave = true;
+      try { await importTown(f); location.reload(); } catch (err) { game.noSave = false; this.addLog('⚠️ ' + err.message); }
     };
     // visitor search (viewer mode): find a resident by name or account
     $('vb-search').oninput = () => {

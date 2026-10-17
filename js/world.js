@@ -85,6 +85,12 @@ export class World {
     this.setLand(5);
   }
 
+  // the far roads are painted on the land (lod.js LandMap)
+  useLandMap(tex) {
+    this.land.material.map = tex;
+    this.land.material.color.set('#ffffff');
+    this.land.material.needsUpdate = true;
+  }
   get landHalf() { return this.landR * TILE + TILE / 2; }
   inLand(i, j) { return Math.abs(i) <= this.landR && Math.abs(j) <= this.landR; }
 
@@ -93,6 +99,11 @@ export class World {
     const half = this.landHalf;
     this.land.scale.set(half * 2, half * 2, 1);
     this.grid.setLand(this.landR);
+    // a big town can be seen whole from high up
+    this.controls.maxDistance = Math.max(420, half * 2.3);
+    this.camera.far = Math.max(3000, half * 6);
+    this.camera.updateProjectionMatrix();
+    this.outside.scale.setScalar(Math.max(1, (half + 1600) * 2 / 4000));
     // little fence posts along the edge of the land
     this.border.clear();
     for (let x = -half; x <= half; x += 6) {
@@ -263,6 +274,6 @@ export class World {
       this.tiltH.uniforms.r.value = this.tiltV.uniforms.r.value = .5;
       this.composer.render();
     } else this.renderer.render(this.scene, this.camera);
-    this.labels.render(this.scene, this.camera);
+    this.labels.render(this.labelScene || this.scene, this.camera);
   }
 }

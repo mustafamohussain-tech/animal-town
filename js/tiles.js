@@ -18,6 +18,7 @@ export class TileMap {
     this.game = game;
     this.tiles = new Map();
     this.meshes = new Map();
+    this.items = new Map();   // road / dirt tiles in the chunks (lod.js): their meshes exist only near the camera
     this.lampSrc = new Map();
     this.treeRects = new Map();
   }
@@ -144,7 +145,7 @@ export class TileMap {
     if (r.road === on) return false;
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
-    for (let a = i - 2; a <= i + 2; a++) for (let c = j - 2; c <= j + 2; c++) this.rebuild(a, c); // wide roads look at their neighbours' neighbours
+    for (let a = i - 2; a <= i + 2; a++) for (let c = j - 2; c <= j + 2; c++) this.rebuildSoon(a, c); // wide roads look at their neighbours' neighbours
     this.game.water?.roadChanged(i, j);   // roads over water are walkable (bridges), no reeds on the road
     this.game.curves?.refreshNear(i, j);  // a bridge's pillars step off the new road
     if (on) this.game.curves?.linkLater(i, j);   // a curved road ending here joins this road
@@ -159,9 +160,16 @@ export class TileMap {
     if (!!r.dirt === on) return false;
     r.dirt = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
-    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuild(a, c);
+    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuildSoon(a, c);
     this.game.water?.roadChanged(i, j);
     return true;
+  }
+  // while a saved town loads, each tile is rebuilt once at the end (not 25 times)
+  rebuildSoon(i, j) { if (this.loading) (this.pending ||= new Set()).add(K(i, j)); else this.rebuild(i, j); }
+  finishLoad() {
+    const p = this.pending;
+    this.pending = null;
+    if (p) for (const k of p) { const [i, j] = k.split(',').map(Number); this.rebuild(i, j); }
   }
   buildDirt(i, j, g) {
     const D = (a, b) => this.isDrivable(a, b);
@@ -179,7 +187,21 @@ export class TileMap {
   }
   rebuild(i, j) {
     this.stampCost(i, j);
-    const k = K(i, j);
+    const k = K(i, j), ch = this.game.chunks;
+    this.game.landMap?.mark();
+    let it = this.items.get(k);
+    if (!this.isRoad(i, j) && !this.isDirt(i, j)) {
+      if (it) { ch.remove(it); this.items.delete(k); }
+      this.dropTile(k);
+      return;
+    }
+    if (!it) {
+      it = { layer: 'tile', x: i * TILE, z: j * TILE, build: () => this.buildTile(i, j), drop: () => this.dropTile(k) };
+      this.items.set(k, it);
+      ch.add(it);
+    } else ch.refresh(it);
+  }
+  dropTile(k) {
     const oldT = this.treeRects.get(k);   // the street tree's spot in the walk grid
     if (oldT) { this.game.world.grid.mark(...oldT, -1); this.treeRects.delete(k); }
     const old = this.meshes.get(k);
@@ -190,6 +212,10 @@ export class TileMap {
     }
     const src = this.lampSrc.get(k);
     if (src) { this.game.daynight.removeSource(src); this.lampSrc.delete(k); }
+  }
+  buildTile(i, j) {
+    const k = K(i, j);
+    this.dropTile(k);
     if (!this.isRoad(i, j)) {
       if (this.isDirt(i, j)) {
         const g = new THREE.Group();
@@ -367,7 +393,7 @@ export class TileMap {
   }
 
   clear() {
-    for (const k of [...this.meshes.keys()]) { const [i, j] = k.split(',').map(Number); const r = this.get(i, j); r.road = false; r.dirt = false; this.rebuild(i, j); }
+    for (const k of [...this.items.keys()]) { const [i, j] = k.split(',').map(Number); const r = this.get(i, j); r.road = false; r.dirt = false; this.rebuild(i, j); }
     this.tiles.clear();
   }
 }

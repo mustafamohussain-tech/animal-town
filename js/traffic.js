@@ -286,7 +286,7 @@ export class Traffic {
   // nobody ever stands inside a car: anyone overlapping one is moved out beside it
   keepPeopleOut() {
     const boxes = [...this.cars.map(c => c.group), ...this.game.vehicles.list.filter(v => !v.busy && !v.stored).map(v => v.group)];
-    for (const ch of this.game.chars) {
+    for (const ch of this.game.awake) {
       if (ch.inCar || ch.inBus || !ch.root.visible) continue;
       const p = ch.root.position;
       for (const b of boxes) {
@@ -355,7 +355,7 @@ export class Traffic {
       if (a > 0 && a < 5.6 && sd < 2.3) want = 0;
     }
     // people crossing in front: wait for them
-    for (const ch of this.game.chars) {
+    for (const ch of this.game.awake) {
       if (ch.inCar || ch === c || !ch.root.visible) continue;
       const ox = ch.root.position.x - p.x, oz = ch.root.position.z - p.z, [a, sd] = ahead(ox, oz);
       if (a > 0 && a < 4.2 && sd < 1.7) {

@@ -26,11 +26,24 @@ export class Props {
 
   add(type, x, z, rot = 0, o = {}) {
     if (!PROP_TYPES[type]) return null;
-    const g = new THREE.Group();
+    const p = { id: o.id ?? this.nextId++, type, x, z, rot, natural: !!o.natural, group: null, scale: o.scale || rand(.85, 1.25) };
+    this.nextId = Math.max(this.nextId, p.id + 1);
+    if (type === 'lamp') p.src = this.game.daynight.addSource({ pos: new THREE.Vector3(x, 4.5, z), power: 6 });
+    if (type === 'gardenlamp') p.src = this.game.daynight.addSource({ pos: new THREE.Vector3(x, 2.8, z), power: 4 });
+    const b = PROP_TYPES[type].block * (type === 'tree' ? p.scale : 1);
+    if (b) { p.rect = [x - b, z - b, x + b, z + b]; this.game.world.grid.mark(...p.rect, 1); }
+    this.list.push(p);
+    // the 3D model is made when the camera comes near (lod.js)
+    p.item = { layer: 'prop', x, z, build: () => this.build(p), drop: () => this.drop(p) };
+    this.game.chunks.add(p.item);
+    if (type === 'tree') this.game.treeProxies.mark();
+    return p;
+  }
+  build(p) {
+    const { type, x, z, rot } = p;
+    const g = p.group = new THREE.Group();
     g.position.set(x, 0, z);
     g.rotation.y = rot;
-    const p = { id: o.id ?? this.nextId++, type, x, z, rot, natural: !!o.natural, group: g, scale: o.scale || rand(.85, 1.25) };
-    this.nextId = Math.max(this.nextId, p.id + 1);
     if (type === 'lamp') {
       cyl(.11, .16, 4.4, '#2f343c', 0, 2.2, 0, g, 8);
       box(.5, .12, .5, '#2f343c', 0, 4.45, 0, g);
@@ -38,7 +51,6 @@ export class Props {
       bulb.userData.keep = true;
       mesh(new THREE.ConeGeometry(.42, .35, 8), '#2f343c', 0, 5.1, 0, g);
       addGlow(g, 0, 4.75, 0, 2.6, 10);
-      p.src = this.game.daynight.addSource({ pos: new THREE.Vector3(x, 4.5, z), power: 6 });
     } else if (type === 'traffic') {
       cyl(.12, .14, 4.2, '#3a3f48', 0, 2.1, 0, g, 8);
       box(.55, 1.5, .45, '#222222', 0, 3.95, .1, g);
@@ -67,7 +79,6 @@ export class Props {
       const globe = mesh(sphere(.32), NIGHT.bulb, 0, 2.95, 0, g);
       globe.userData.keep = true;
       addGlow(g, 0, 2.95, 0, 2, 8);
-      p.src = this.game.daynight.addSource({ pos: new THREE.Vector3(x, 2.8, z), power: 4 });
     } else if (type === 'busstop') {
       makeBusStop(this.game, g);
     } else if (type === 'flowers') {
@@ -77,20 +88,26 @@ export class Props {
     mergeStatic(g);
     shadows(g);
     this.game.scene.add(g);
-    const b = PROP_TYPES[type].block * (type === 'tree' ? p.scale : 1);
-    if (b) { p.rect = [x - b, z - b, x + b, z + b]; this.game.world.grid.mark(...p.rect, 1); }
-    this.list.push(p);
-    return p;
+    if (type === 'tree') this.game.treeProxies.mark();
+  }
+  drop(p) {
+    if (!p.group) return;
+    this.game.scene.remove(p.group);
+    p.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
+    p.group = null;
+    p.lamps = null;
+    if (p.type === 'tree') this.game.treeProxies.mark();
   }
 
   remove(p) {
     const i = this.list.indexOf(p);
     if (i < 0) return;
     this.list.splice(i, 1);
-    this.game.scene.remove(p.group);
+    this.game.chunks.remove(p.item);
+    this.drop(p);
     if (p.rect) this.game.world.grid.mark(...p.rect, -1);
     if (p.src) this.game.daynight.removeSource(p.src);
-    p.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
+    if (p.type === 'tree') this.game.treeProxies.mark();
   }
 
   // remove props inside a rectangle (e.g. when a building or road is placed there)

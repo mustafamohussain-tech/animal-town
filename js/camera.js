@@ -56,7 +56,7 @@ export class CameraDirector {
 
   setMode(mode, o = {}) {
     const ctl = this.ctl;
-    if (this.mode === 'interior') { ctl.minDistance = 2.5; ctl.maxDistance = 420; ctl.maxPolarAngle = Math.PI * .48; }
+    if (this.mode === 'interior') { ctl.minDistance = 2.5; ctl.maxDistance = Math.max(420, this.game.world.landHalf * 2.3); ctl.maxPolarAngle = Math.PI * .48; }
     if (this.mode === 'cinema' || this.mode === 'plane') ctl.target.copy(this.look);
     this.mode = mode;
     this.goal = null;
@@ -150,6 +150,7 @@ export class CameraDirector {
   blocked(pos, target) {
     const town = this.game.town, cp = this.char.root.position, own = town.at(cp.x, cp.z);
     const trees = this.game.props.list.filter(t => t.type === 'tree' && Math.abs(t.x - pos.x) + Math.abs(t.z - pos.z) < 40);
+    const sites = town.near(pos.x, pos.z, 40).filter(b => !b.complete);
     const steps = 12;
     for (let i = 0; i <= steps; i++) {
       const u = i / steps;
@@ -159,7 +160,7 @@ export class CameraDirector {
       for (const t of trees) if (y < 6 * t.scale && Math.hypot(t.x - x, t.z - z) < 2.2 * t.scale && u < .9) return true;
       // scaffolding poles stand just outside a construction site
       if (u < .85) {
-        for (const s of town.sites()) {
+        for (const s of sites) {
           const l = s.toLocal(x, z);
           if (Math.abs(l.x) < s.W / 2 + 1.2 && Math.abs(l.z) < s.D / 2 + 1.2 && y < Math.min(s.roofTop, 30) + .5) return true;
         }
@@ -190,7 +191,7 @@ export class CameraDirector {
       // crowded street: rise above the roofs and look down at the citizen
       const p = this.sp;
       let top = 6;
-      for (const b of this.game.town.all) if (Math.hypot(b.cx - p.x, b.cz - p.z) < 22) top = Math.max(top, b.complete ? b.roofTop : Math.min(b.roofTop, 30));
+      for (const b of this.game.town.near(p.x, p.z, 22)) if (Math.hypot(b.cx - p.x, b.cz - p.z) < 22) top = Math.max(top, b.complete ? b.roofTop : Math.min(b.roofTop, 30));
       this.shot = { name: 'crane', from: [3, top + 4, 7], to: [2, top + 3, 6], at: 1 };
     }
     this.shotTime = 0;
@@ -273,7 +274,7 @@ export class CameraDirector {
   keepOutside() {
     const p = this.cam.position;
     if (p.y < 1.4) p.y = 1.4;
-    for (const b of this.game.town.all) {
+    for (const b of this.game.town.near(p.x, p.z, 16)) {
       if (b.def.open || b.W == null) continue;
       const l = b.toLocal(p.x, p.z), mx = b.W / 2 + .9, mz = b.D / 2 + .9;
       if (Math.abs(l.x) >= mx || Math.abs(l.z) >= mz || p.y > (b.roofTop ?? 3) + 1.2) continue;

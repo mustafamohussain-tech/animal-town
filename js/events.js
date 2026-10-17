@@ -45,7 +45,10 @@ export const NIGHT_EVENTS = FESTIVE;   // these go on after dark (gathering + fi
 function townDecor(g, key) {
   const root = new THREE.Group(), T = g.tiles, S = 12, H = 6;
   const lights = key === 'eid' || key === 'fireworks' || key === 'concert';
+  // a big town: decorate the streets around the celebration (not every street of thousands)
+  const c = g.events.center(), R = 170, near = (x, z) => Math.hypot(x - c.x, z - c.z) < R;
   for (const [i, j] of T.roadList()) {
+    if (!near(i * S, j * S)) continue;
     if (T.bridgeH(i, j) || T.rampDir(i, j)) continue;
     const sides = [[0, 1], [0, -1], [1, 0], [-1, 0]].filter(([a, b]) => !T.isDrivable(i + a, j + b) && !T.hasBuilding(i + a, j + b));
     sides.forEach(([a, b], n) => {
@@ -63,7 +66,7 @@ function townDecor(g, key) {
     });
   }
   // balloons at the front corners of every finished building (never in front of its sign)
-  for (const b of g.town.all) {
+  for (const b of g.town.near(c.x, c.z, R)) {
     if (!b.complete || b.def.open) continue;
     for (const s of [-1, 1]) {
       const w = b.toWorld(s * (b.W / 2 + .2), b.D / 2 + .9), x = w.x, z = w.z, y = rand(2.3, 2.8);

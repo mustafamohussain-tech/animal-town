@@ -500,7 +500,7 @@ export class Water {
     this.rippleT = (this.rippleT || 0) - dt;
     if (this.rippleT <= 0) {
       this.rippleT = .35;
-      for (const ch of this.game.chars) if (ch.swimming) this.ripple(ch.root.position.x, ch.root.position.z);
+      for (const ch of this.game.awake) if (ch.swimming) this.ripple(ch.root.position.x, ch.root.position.z);
     }
     for (const r of this.ripples || []) {
       if (!r.visible) continue;

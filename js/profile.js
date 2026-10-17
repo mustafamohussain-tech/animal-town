@@ -74,6 +74,7 @@ const v = new THREE.Vector3(), v2 = new THREE.Vector2();
 export function portrait(game, c, S = 160) {
   const r = game.world.renderer, hidden = [];
   r.getSize(v2);
+  if (!c.awake) c.wake();   // a far resident gets a body for the photo
   const wasVisible = c.root.visible;
   try {
     const scene = game.world.scene;
@@ -82,7 +83,7 @@ export function portrait(game, c, S = 160) {
     pcam.position.set(v.x + Math.sin(a) * 2.4, v.y + .35, v.z + Math.cos(a) * 2.4);
     pcam.lookAt(v.x, v.y - .25, v.z);
     // photo of this citizen only: hide everyone else for a moment
-    hidden.push(...game.chars.filter(o => o !== c && o.root.visible));
+    hidden.push(...[...game.awake].filter(o => o !== c && o.root.visible));
     hidden.forEach(o => { o.root.visible = false; });
     c.root.visible = true;
     const pr = r.getPixelRatio();

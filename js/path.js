@@ -1,7 +1,7 @@
 // Walkable grid + A* path finding so characters walk around walls and furniture.
 // 1 cell = 1 unit. The grid is big enough for the largest land the town can expand to.
 export const TILE = 12;          // one road / building tile = 12 x 12 units
-export const MAX_R = 20;         // land can grow to 41 x 41 tiles
+export const MAX_R = 75;         // land can grow to 151 x 151 tiles (room for 10,000+ buildings)
 export const GMIN = -(MAX_R * TILE + TILE / 2);
 export const GN = -GMIN * 2;
 
@@ -37,6 +37,7 @@ class Heap {
   }
 }
 
+const WIN = 420;   // the largest search window (cells per side); longer walks are found in parts
 const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
 
 export class Grid {
@@ -47,10 +48,12 @@ export class Grid {
     this.wet = new Uint8Array(n);   // water (see water.js)
     // how much people dislike walking on a cell: 1 sidewalk / path / building plot, 5 grass, 6 asphalt (see tiles.stampCost)
     this.cost = new Uint8Array(n).fill(5);
-    this.g = new Float32Array(n);
-    this.from = new Int32Array(n);
-    this.seen = new Uint32Array(n);
-    this.done = new Uint32Array(n);
+    // search memory only for a window around each walk (not the whole map): a big town stays light
+    const W = WIN * WIN;
+    this.g = new Float32Array(W);
+    this.from = new Int32Array(W);
+    this.seen = new Uint32Array(W);
+    this.done = new Uint32Array(W);
     this.stamp = 0;
     this.heap = new Heap();
     this.setLand(5);
@@ -117,6 +120,7 @@ export class Grid {
   // returns a list of {x,z} waypoints ending exactly at the target
   findPath(sx, sz, tx, tz) {
     const target = { x: tx, z: tz };
+    this.lastCut = false;
     const cl = v => Math.min(this.hi, Math.max(this.lo, v));
     let si = cl(this.cell(sx)), sj = cl(this.cell(sz));
     let ti = cl(this.cell(tx)), tj = cl(this.cell(tz));
@@ -124,12 +128,28 @@ export class Grid {
     let end = target;
     if (!this.free(ti, tj)) { const nf = this.nearestFree(ti, tj); if (!nf) return [{ x: sx, z: sz }]; [ti, tj] = nf; end = { x: this.center(ti), z: this.center(tj) }; }
     if (!this.free(si, sj)) { const nf = this.nearestFree(si, sj, 4); if (nf) [si, sj] = nf; }
+    // a very long walk goes part of the way (it continues from there later)
+    const LIM = (WIN - 2 * 40) / 2;
+    if (Math.abs(ti - si) > LIM || Math.abs(tj - sj) > LIM) {
+      this.lastCut = true;
+      const f = LIM / Math.max(Math.abs(ti - si), Math.abs(tj - sj));
+      ti = Math.round(si + (ti - si) * f); tj = Math.round(sj + (tj - sj) * f);
+      const nf = this.free(ti, tj) ? [ti, tj] : this.nearestFree(ti, tj);
+      if (!nf) return [{ x: sx, z: sz }];
+      [ti, tj] = nf;
+      end = { x: this.center(ti), z: this.center(tj) };
+    }
     if (si === ti && sj === tj) return [end];
     if (this.lineCheap(sx, sz, this.center(ti), this.center(tj))) return [{ x: this.center(ti), z: this.center(tj) }, end];
 
     const S = ++this.stamp;
     const { g, from, seen, done, heap } = this;
     heap.clear();
+    // the search window: the box around start and goal with a margin for detours
+    const x0 = Math.max(this.lo, Math.min(si, ti) - 40), x1 = Math.min(this.hi, Math.max(si, ti) + 40);
+    const z0 = Math.max(this.lo, Math.min(sj, tj) - 40), z1 = Math.min(this.hi, Math.max(sj, tj) + 40);
+    const WW = x1 - x0 + 1;
+    const L = k => ((k / GN | 0) - z0) * WW + (k % GN - x0);   // window index of a map cell
     const start = sj * GN + si, goal = tj * GN + ti;
     // slightly greedy (x1.6) so long walks stay fast with the walking costs
     const h = k => {
@@ -138,23 +158,24 @@ export class Grid {
     };
     const C = this.cost;
     let best = start, bestH = Infinity;
-    g[start] = 0; seen[start] = S; from[start] = -1;
+    const ls = L(start);
+    g[ls] = 0; seen[ls] = S; from[ls] = -1;
     heap.push(start, h(start));
     let found = false, iter = 0;
-    while (heap.size && iter++ < 150000) {
-      const k = heap.pop();
-      if (done[k] === S) continue;
+    while (heap.size && iter++ < 90000) {
+      const k = heap.pop(), lk = L(k);
+      if (done[lk] === S) continue;
       if (k === goal) { found = true; break; }
-      done[k] = S;
+      done[lk] = S;
       const hk = h(k);
       if (hk < bestH) { bestH = hk; best = k; }
       const i = k % GN, j = (k / GN) | 0;
       for (const [dx, dz, cost] of DIRS) {
         const ni = i + dx, nj = j + dz;
-        if (!this.free(ni, nj)) continue;
+        if (ni < x0 || ni > x1 || nj < z0 || nj > z1 || !this.free(ni, nj)) continue;
         if (dx && dz && (!this.free(i + dx, j) || !this.free(i, j + dz))) continue;
-        const nk = nj * GN + ni, ng = g[k] + cost * C[nk];
-        if (seen[nk] !== S || ng < g[nk]) { seen[nk] = S; g[nk] = ng; from[nk] = k; heap.push(nk, ng + h(nk)); }
+        const nk = nj * GN + ni, ln = L(nk), ng = g[lk] + cost * C[nk];
+        if (seen[ln] !== S || ng < g[ln]) { seen[ln] = S; g[ln] = ng; from[ln] = k; heap.push(nk, ng + h(nk)); }
       }
     }
     // can't get there: walk as close as possible (never straight through walls)
@@ -162,7 +183,7 @@ export class Grid {
     if (!found) end = { x: this.center(last % GN), z: this.center((last / GN) | 0) };
 
     const cells = [];
-    for (let k = last; k !== start && k !== -1; k = from[k]) cells.push(k);
+    for (let k = last; k !== start && k !== -1; k = from[L(k)]) cells.push(k);
     cells.reverse();
     const pts = [{ x: sx, z: sz }, ...cells.map(k => ({ x: this.center(k % GN), z: this.center((k / GN) | 0) })), end];
 

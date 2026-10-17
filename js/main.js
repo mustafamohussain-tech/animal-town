@@ -1,7 +1,7 @@
 // Starts everything: game, panel, saved town, and the frame loop.
 import { Game } from './game.js';
 import { UI } from './ui.js';
-import { loadGame, saveGame, loadData } from './save.js';
+import { loadGame, saveGame, loadData, lastSaveSize } from './save.js';
 import { Music } from './music.js';
 import { Recorder } from './recorder.js';
 
@@ -19,21 +19,20 @@ if (params.has('view') || (online && !params.has('edit'))) {
   game.noSave = true;
   game.followNew = false;
   document.body.classList.add('viewer');
-  let data = null;
-  try { data = await (await fetch('town.json', { cache: 'no-store' })).json(); } catch { /* no published town yet */ }
+  let data = null, text = '';
+  try { text = await (await fetch('town.json', { cache: 'no-store' })).text(); data = JSON.parse(text); } catch { /* no published town yet */ }
   if (!loadData(game, data)) game.newTown();
   game.screenMode = 'fill';
   // when you upload a newer town.json, visitors get it automatically (checked every 90 seconds)
-  let current = data ? JSON.stringify(data).length + ':' + (data.chars?.length || 0) : '';
+  let current = data ? text.length : 0;
   setInterval(async () => {
     try {
-      const fresh = await (await fetch('town.json', { cache: 'no-store' })).json();
-      const sig = JSON.stringify(fresh).length + ':' + (fresh.chars?.length || 0);
-      if (current && sig !== current) location.reload();
-      current = sig;
+      const fresh = await (await fetch('town.json', { cache: 'no-store' })).text();
+      if (current && fresh.length !== current && JSON.parse(fresh)?.v === 2) location.reload();
+      current = fresh.length;
     } catch { /* offline: try again later */ }
   }, 90000);
-} else if (!loadGame(game)) game.newTown();
+} else if (!(await loadGame(game))) game.newTown();
 game.bus.ensureStop(); // older towns get a bus stop too
 for (const p of [...game.props.list]) if (!p.natural && p.type !== 'busstop' && game.tiles.onAsphalt(p.x, p.z)) game.props.remove(p);
 const ui = new UI(game);
@@ -48,6 +47,9 @@ if (game.savedMusic?.on) {
   addEventListener('keydown', go);
 }
 ui.refreshAll();
+// big town: build what is near the camera now, the rest comes as the camera moves
+game.chunks.flush();
+console.info(`town ready: ${game.chars.length} residents, ${game.town.all.length} buildings, ${Math.round(performance.now())} ms after opening`);
 
 // screen shape: phone (9:16, for TikTok), computer (16:9) or fill the whole window
 function fit() {
@@ -87,5 +89,11 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
-setInterval(() => { if (!game.noSave) saveGame(game); }, 4000);
+// saving: every 4 seconds, a big town (slower to write) every 30 seconds, and when the page is hidden or closed
+let lastSave = performance.now();
+setInterval(() => {
+  const every = lastSaveSize > 1.5e6 ? 30000 : 4000;
+  if (!game.noSave && performance.now() - lastSave >= every - 50) { lastSave = performance.now(); saveGame(game); }
+}, 4000);
+document.addEventListener('visibilitychange', () => { if (document.hidden && !game.noSave) saveGame(game); });
 addEventListener('beforeunload', () => { if (!game.noSave) saveGame(game); });

@@ -51,19 +51,58 @@ export class Character {
     this.inside = false;
     this.labelScale = 1;
     this.P = {};
-    this.buildModel();
+    // the body is only built while the resident is near the camera (see wake / sleep and Game.updateAwake)
+    this.root = new THREE.Group();
+    this.root.userData.charId = this.id;
+    this.awake = false;
     this.setJob(d.job && JOBS[d.job] ? d.job : 'none');
     this.workplaceId = d.workplaceId ?? null;
     this.workPinned = !!d.workPinned;
     if (d.hurt) this.setHurt(true);
   }
 
+  // ---------- near the camera: a full 3D body; far away: just a position (nothing to draw or animate) ----------
+  wake() {
+    if (this.awake) return;
+    this.awake = true;
+    this.buildModel();
+    dress(this, this.job);
+    this.updateLabel();
+    this.bandage.visible = this.hurt;
+    this.ring.visible = !!this.isSel;
+    const tool = this.toolName;
+    this.toolName = null;
+    if (tool) this.setTool(tool);
+    this.labelScale = 1;
+    this.root.visible = !this.inside;
+    this.game.scene.add(this.root);
+    this.game.awake.add(this);
+  }
+  sleep() {
+    if (!this.awake) return;
+    // what they were doing is dropped (they pick something new when the camera comes back);
+    // orders from the chat are kept and go on later
+    if (!this.commanded) { this.activity?.end?.(this); this.activity = null; this.queue = []; this.stop(); this.pose = 'idle'; }
+    this.awake = false;
+    this.game.awake.delete(this);
+    this.game.scene.remove(this.root);
+    this.root.remove(this.label, this.bubble);   // takes the name tags out of the page
+    for (const o of [...this.root.children]) {
+      this.root.remove(o);
+      o.traverse(m => { if (m.isMesh && m.userData.ownGeo) m.geometry.dispose(); });
+    }
+    this.shirtMat.dispose();
+    this.pantsMat.dispose();
+    this.body = this.label = this.bubble = this.ring = this.bandage = this.tool = this.carry = this.swimCap = null;
+    this.inSwimsuit = false;
+    this.carryUntil = 0;
+  }
+
   buildModel() {
     const d = this.def, neck = d.neck || 0;
     this.shirtMat = new THREE.MeshStandardMaterial({ color: this.shirt, roughness: .8 });
     this.pantsMat = new THREE.MeshStandardMaterial({ color: this.pants, roughness: .85 });
-    const root = this.root = new THREE.Group();
-    root.userData.charId = this.id;
+    const root = this.root;
     const body = this.body = new THREE.Group();
     root.add(body);
 
@@ -168,6 +207,21 @@ export class Character {
     this.bubble.position.set(0, 3.85 + neck, 0);
     this.bubble.visible = false;
     root.add(this.bubble);
+    this.tagged = true;
+    this.shadowOn = true;
+  }
+  // only residents close to the camera cast a shadow (the far ones are small; it saves a lot of drawing)
+  setShadow(v) {
+    if (!this.awake || this.shadowOn === v) return;
+    this.shadowOn = v;
+    this.body.traverse(o => { if (o.isMesh) o.castShadow = v; });
+  }
+  // the name tag + speech bubble are page elements: only the nearest residents carry them (Game.updateViews)
+  setTagged(v) {
+    if (!this.awake || this.tagged === v) return;
+    this.tagged = v;
+    if (v) this.root.add(this.label, this.bubble);
+    else this.root.remove(this.label, this.bubble);
   }
 
   // ---------- goals ----------
@@ -186,15 +240,16 @@ export class Character {
     this.workPinned = false;
     this.job = job;
     this.workplaceId = null;
-    dress(this, job);
-    this.updateLabel();
+    if (this.awake) { dress(this, job); this.updateLabel(); }
   }
   updateLabel() {
+    if (!this.awake) return;
     this.labelName.textContent = this.name;
     this.labelJob.textContent = this.job === 'none' ? '' : `${JOBS[this.job].emoji} ${t('job_' + this.job)}`;
     this.labelJob.style.display = this.job === 'none' ? 'none' : '';
   }
   say(text, dur = 3.5) {
+    if (!this.awake) return;
     this.bubbleInner.textContent = text;
     this.bubbleInner.dir = 'auto';
     this.bubble.visible = !this.inside;
@@ -202,12 +257,14 @@ export class Character {
   }
   setTool(name) {
     if (this.toolName === name) return;
+    this.toolName = name;
+    if (!this.awake) return;
     if (this.tool) this.handR.remove(this.tool);
     this.tool = null;
-    this.toolName = name;
     if (name) { this.tool = makeTool(name); this.handR.add(this.tool); }
   }
   setCarry(name, sec) {
+    if (!this.awake) { this.carryUntil = 0; return; }
     if (this.carry) this.handL.remove(this.carry);
     this.carry = name ? makeTool(name) : null;
     if (this.carry) this.handL.add(this.carry);
@@ -215,16 +272,17 @@ export class Character {
   }
   setHurt(v) {
     this.hurt = v;
-    this.bandage.visible = v;
+    if (this.bandage) this.bandage.visible = v;
     if (!v) this.atHospital = null;
   }
   setInside(v) {
     this.inside = v;
     this.root.visible = !v;
+    if (!this.awake) return;
     this.label.visible = !v;
     if (v) this.bubble.visible = false;
   }
-  setSelected(v) { this.ring.visible = v; }
+  setSelected(v) { this.isSel = v; if (this.ring) this.ring.visible = v; }
 
   // ---------- orders ----------
   moveTo(x, z, speed = 2) {
@@ -241,13 +299,15 @@ export class Character {
     const tr = this.game.traffic;
     if (tr?.wantsRide(this, x, z)) this.trip = tr.startTrip(this, x, z);
     this.forceRide = null;
-    if (!this.trip) this.path = this.game.world.grid.findPath(p.x, p.z, x, z);
+    this.dest = { x, z };
+    if (!this.trip) { this.path = this.game.world.grid.findPath(p.x, p.z, x, z); this.longWalk = this.game.world.grid.lastCut; }
     this.moving = true;
     this.speed = speed;
   }
   stop() {
     if (this.trip) this.game.traffic.cancel(this);
     this.path = null;
+    this.longWalk = false;
     this.moving = false;
   }
 
@@ -309,6 +369,11 @@ export class Character {
         // at the curb: wait there for the car (still "on the way")
         this.path = null;
         if (this.trip.phase === 'walk') this.trip.phase = 'atCurb';
+      } else if (this.longWalk && this.dest) {
+        // a very long walk is found in parts: the next part from here
+        const grid = this.game.world.grid;
+        this.path = grid.findPath(p.x, p.z, this.dest.x, this.dest.z);
+        this.longWalk = grid.lastCut;
       } else this.stop();
     }
     const want = walking ? this.heading : this.faceAngle;
@@ -435,10 +500,9 @@ export class Character {
 
   dispose() {
     this.activity?.end?.(this);
-    this.game.scene.remove(this.root);
-    this.root.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
-    this.shirtMat.dispose();
-    this.pantsMat.dispose();
+    this.activity = null;
+    this.commanded = false;
+    this.sleep();
   }
 
   toJSON() {

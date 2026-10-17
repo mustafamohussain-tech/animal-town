@@ -15,6 +15,7 @@ import { History } from './history.js';
 import { Paths } from './paths.js';
 import { Parks } from './parks.js';
 import { Traffic } from './traffic.js';
+import { Chunks, LandMap, BuildingProxies, TreeProxies } from './lod.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
 import { Character } from './character.js';
@@ -26,6 +27,8 @@ import { t } from './i18n.js';
 import { pick, dist2d, clamp } from './util.js';
 
 const normName = n => String(n || '').trim().replace(/^@+/, '').toLowerCase();
+// only this many residents (the nearest to the camera) have a 3D body and act at the same time
+const AWAKE_R = 65, AWAKE_MAX = 120, TAGS_MAX = 45, TAGS_R = 90, SHADOW_R = 45;
 const SEATED = new Set(['sit', 'eat', 'lie', 'sleep', 'sleepGround', 'sitGround', 'stir', 'sell', 'point', 'fish', 'heal', 'hoe', 'hammer']);
 
 export class Game {
@@ -33,6 +36,16 @@ export class Game {
     this.frame = frame;
     this.world = new World(frame);
     this.scene = this.world.scene;
+    // big towns: full detail only near the camera (lod.js)
+    this.chunks = new Chunks(this);
+    this.proxies = new BuildingProxies(this);
+    this.treeProxies = new TreeProxies(this);
+    this.landMap = new LandMap(this);
+    this.world.useLandMap(this.landMap.tex);
+    this.chunks.onChange(L => { if (L.has('prop')) this.treeProxies.mark(); });
+    this.awake = new Set();          // residents that have a body right now
+    this.charById = new Map();
+    this.charByName = new Map();
     this.effects = new Effects(this.scene);
     this.daynight = new DayNight(this.world);
     this.tiles = new TileMap(this);
@@ -77,6 +90,7 @@ export class Game {
     const old = this.world.landR;
     this.world.setLand(old + n);
     if (this.world.landR === old) return this.log(t('maxLand'));
+    this.landMap.mark();
     this.props.sprinkle(old + 1, this.world.landR);
     this.emit('change');
     return this.announce(t('expanded', { n: this.world.landR * 2 + 1 }));
@@ -99,8 +113,8 @@ export class Game {
   announce(msg) { this.banner(msg); return this.log(msg); }
 
   // ---------- citizens ----------
-  findChar(name) { const n = normName(name); return n ? this.chars.find(c => normName(c.name) === n) || null : null; }
-  getChar(id) { return this.chars.find(c => c.id === id) || null; }
+  findChar(name) { const n = normName(name); return n ? this.charByName.get(n) || null : null; }
+  getChar(id) { return id == null ? null : this.charById.get(id) || null; }
 
   addCharacter(d, announce = true) {
     const raw = String(d.name || '').trim().replace(/^@+/, '').slice(0, 24);
@@ -110,11 +124,15 @@ export class Game {
     const home = this.town.get(c.homeId);
     // people appear at home, or next to the bus stop
     const geo = this.bus.geometry();
-    const p = home?.complete ? home.spot('door') : geo ? geo.spot(Math.random() * 3) : this.world.spawnPoint();
+    // a big town being loaded: residents without a finished home wait somewhere in town (not all at the bus stop)
+    const any = !announce && !home?.complete && this.town.all.length > 30 ? this.town.all[Math.random() * this.town.all.length | 0] : null;
+    const p = home?.complete ? home.spot('door') : any ? any.toWorld(0, any.D / 2 + 2.6) : geo ? geo.spot(Math.random() * 3) : this.world.spawnPoint();
     c.root.position.set(p.x, 0, p.z);
-    this.scene.add(c.root);
     this.chars.push(c);
+    this.charById.set(c.id, c);
+    this.charByName.set(normName(c.name), c);
     if (announce) {
+      c.wake();   // a new follower is always shown
       this.effects.emit('confetti', { x: p.x, y: 2.6, z: p.z }, 50);
       this.effects.emit('sparkle', { x: p.x, y: 1.5, z: p.z }, 8);
       this.announce(t('joined', { name: c.name }));
@@ -140,6 +158,8 @@ export class Game {
     }
     c.dispose();
     this.chars.splice(this.chars.indexOf(c), 1);
+    this.charById.delete(c.id);
+    this.charByName.delete(normName(c.name));
     this.log(t('removed', { name: c.name }));
     this.emit('change');
   }
@@ -164,7 +184,7 @@ export class Game {
 
   nearestChar(c, filter = () => true) {
     let best = null, bd = Infinity;
-    for (const o of this.chars) {
+    for (const o of this.awake) {
       if (o === c || !filter(o)) continue;
       const d = dist2d(o.root.position, c.root.position);
       if (d < bd) { bd = d; best = o; }
@@ -178,13 +198,16 @@ export class Game {
 
   // ---------- homes ----------
   giveHomes() {
+    // apartments take in homeless citizens; houses belong to whoever they were built for
+    const homeless = this.chars.filter(c => c.homeId == null || !this.town.get(c.homeId));
+    if (!homeless.length) return;
+    let k = 0;
     for (const b of this.town.all) {
-      // apartments take in homeless citizens; houses belong to whoever they were built for
+      if (k >= homeless.length) break;
       if (!b.complete || b.spec.role !== 'apartment') continue;
-      const cap = Math.max(1, b.count('bed'));
-      for (const c of this.chars) {
-        if (b.residents.length >= cap) break;
-        if (c.homeId != null && this.town.get(c.homeId)) continue;
+      const cap = Math.max(1, b.capacity());
+      while (b.residents.length < cap && k < homeless.length) {
+        const c = homeless[k++];
         b.residents.push(c.id);
         c.homeId = b.id;
       }
@@ -209,13 +232,24 @@ export class Game {
     if (cur && cur.kind === type && cur.complete && cur.alive) return cur;
     const options = this.town.of(type);
     if (!options.length) return null;
-    options.sort((a, b) => this.workerCount(a) - this.workerCount(b) || dist2d(a.center, c.root.position) - dist2d(b.center, c.root.position));
+    // close to where they are, and not too crowded (in a big town the far side is a long trip)
+    const score = b => dist2d(b.center, c.root.position) + this.workerCount(b) * 30;
+    options.sort((a, b) => score(a) - score(b));
     c.workplaceId = options[0].id;
     return options[0];
   }
-  workerCount(b) { return this.chars.filter(x => x.workplaceId === b.id).length; }
-  workerIndex(c, b) { return this.chars.filter(x => x.workplaceId === b.id).sort((a, z) => a.id - z.id).indexOf(c); }
-  workerAt(b) { return this.chars.find(x => x.workplaceId === b.id && x.activity?.name === 'work') || null; }
+  // who works where (counted again at most once a second: fast with thousands of residents)
+  staffOf(b) {
+    if (!this.staff || this.time - this.staffAt > 1) {
+      this.staff = new Map();
+      this.staffAt = this.time;
+      for (const x of this.chars) if (x.workplaceId != null) (this.staff.get(x.workplaceId) || this.staff.set(x.workplaceId, []).get(x.workplaceId)).push(x);
+    }
+    return (this.staff.get(b.id) || []).filter(x => x.workplaceId === b.id);
+  }
+  workerCount(b) { return this.staffOf(b).length; }
+  workerIndex(c, b) { return this.staffOf(b).sort((a, z) => a.id - z.id).indexOf(c); }
+  workerAt(b) { return this.staffOf(b).find(x => x.activity?.name === 'work') || null; }
   jobLabel(job) { return t('job_' + job); }
 
   // the job a building offers (null = nobody works there)
@@ -474,21 +508,26 @@ export class Game {
     const r = this.world.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.world.camera);
-    const hits = this.raycaster.intersectObjects(this.chars.filter(c => c.root.visible).map(c => c.root), true);
+    const hits = this.raycaster.intersectObjects([...this.awake].filter(c => c.root.visible).map(c => c.root), true);
     if (hits.length) {
       let o = hits[0].object;
       while (o && o.userData.charId == null) o = o.parent;
       const c = o && this.getChar(o.userData.charId);
       if (c) { this.select(c, true); this.emit('picked', c); return; }
     }
-    const bh = this.raycaster.intersectObjects(this.town.all.map(b => b.group), true);
+    const near = [...this.town.awake];
+    const bh = this.raycaster.intersectObjects(near.map(b => b.group), true);
+    const far = this.proxies.pick(this.raycaster);
     for (const h of bh) {
       if (!h.object.visible) continue;
+      if (far && far.distance < h.distance) break;
       let o = h.object;
-      while (o && !this.town.all.some(b => b.group === o)) o = o.parent;
-      const b = this.town.all.find(x => x.group === o);
+      while (o && !near.some(b => b.group === o)) o = o.parent;
+      const b = near.find(x => x.group === o);
       if (b) { this.selectBuilding(b); this.emit('picked', b); return; }
     }
+    // a far building (a simple block)
+    if (far?.b) { this.selectBuilding(far.b); this.emit('picked', far.b); }
   }
 
   // ---------- per frame ----------
@@ -496,7 +535,11 @@ export class Game {
     this.time += dt;
     const tm = this.time;
     this.daynight.update(dt);
-    for (const c of this.chars) c.update(dt, tm);
+    this.chunks.update(dt);
+    this.landMap.update(dt);
+    this.treeProxies.update(dt);
+    this.updateAwake(dt);
+    for (const c of this.awake) c.update(dt, tm);
     this.separate();
     this.town.update(dt, tm);
     this.props.update(dt, tm);
@@ -509,17 +552,59 @@ export class Game {
     this.world.update(dt);
     this.director.update(dt);
     this.updateViews(dt);
+    this.collectLabels();
+  }
+  // the page elements above heads (names, speech, building sites, drivers): listed here so the
+  // label renderer doesn't walk through every object of the town each frame
+  collectLabels() {
+    const L = this.world.labelScene ||= { matrixWorldAutoUpdate: false, children: [], traverse(fn) { for (const o of this.children) fn(o); } };
+    const out = L.children;
+    out.length = 0;
+    for (const c of this.awake) if (c.tagged && c.label) out.push(c.label, c.bubble);
+    for (const b of this.town.awake) if (b.siteLabel) out.push(b.siteLabel);
+    for (const car of this.traffic.cars) if (car.label) out.push(car.label);
+  }
+
+  // ---------- only the residents near the camera have a body and act (so 10,000 residents stay smooth) ----------
+  // the others keep their place, home and job, and come back to life when the camera comes near them
+  updateAwake(dt) {
+    this.awakeT = (this.awakeT || 0) - dt;
+    if (this.awakeT <= 0) {
+      this.awakeT = .4;
+      const f = this.world.controls.target, d = this.director, list = [];
+      // seen from very high up the residents are dots: fewer of them get a body
+      const R = this.world.camera.position.distanceTo(f) > 350 ? 35 : AWAKE_R;
+      for (const c of this.chars) {
+        const p = c.root.position, dd = Math.hypot(p.x - f.x, p.z - f.z);
+        // always: the chosen / followed resident, and anyone riding a car or the bus
+        if (c === this.selected || c === d.char || c.inCar || c.inBus || c.trip) list.push([c, dd - 1e6]);
+        // next: anyone doing an order from the chat (until it is done, even far from the camera)
+        else if (c.commanded) list.push([c, dd - 1e5]);
+        else if (dd < (c.awake ? R + 15 : R)) list.push([c, dd - (c.awake ? 20 : 0)]);   // the awake ones stay (no coming and going at the edge)
+      }
+      list.sort((a, b) => a[1] - b[1]);
+      this.wantAwake = list.slice(0, AWAKE_MAX).map(x => x[0]);
+      const keep = new Set(this.wantAwake);
+      for (const c of [...this.awake]) if (!keep.has(c)) c.sleep();
+    }
+    // a few new bodies per frame, so moving the camera never stutters
+    const t0 = performance.now();
+    for (const c of this.wantAwake || []) {
+      if (c.awake) continue;
+      if (performance.now() - t0 > 4) break;
+      c.wake();
+    }
   }
 
   // keep citizens from standing inside each other
   separate() {
     const cells = new Map(), R = .95;
-    for (const c of this.chars) {
+    for (const c of this.awake) {
       const p = c.root.position, k = Math.floor(p.x / 2) + ',' + Math.floor(p.z / 2);
       (cells.get(k) || cells.set(k, []).get(k)).push(c);
     }
     const grid = this.world.grid;
-    for (const c of this.chars) {
+    for (const c of this.awake) {
       if (c.inCar) continue;
       const p = c.root.position, cx = Math.floor(p.x / 2), cz = Math.floor(p.z / 2);
       const wa = c.moving ? 1 : SEATED.has(c.pose) ? 0 : .35;
@@ -545,14 +630,21 @@ export class Game {
     this.viewTimer -= dt;
     if (this.viewTimer <= 0) {
       this.viewTimer = .25;
-      for (const c of this.chars) c.bld = this.town.at(c.root.position.x, c.root.position.z);
+      const order = [];
+      for (const c of this.awake) {
+        c.bld = this.town.at(c.root.position.x, c.root.position.z);
+        order.push([c, c === this.selected || c === d.char ? -1 : cam.distanceTo(c.root.position)]);
+      }
+      // name tags for the nearest residents only
+      order.sort((a, b) => a[1] - b[1]);
+      order.forEach(([c, dd], k) => { c.setTagged(k < TAGS_MAX && dd < TAGS_R); c.setShadow(dd < SHADOW_R); });
     }
-    for (const b of this.town.all) {
+    for (const b of this.town.awake) {
       const forced = (d.mode === 'interior' && d.building === b) || (focusChar && focusChar.bld === b);
       const floorMax = d.mode === 'interior' && d.building === b ? d.floor : (focusChar && focusChar.bld === b ? Math.floor((focusChar.root.position.y + .5) / FH) : null);
       b.applyView(cam, forced, floorMax);
     }
-    for (const c of this.chars) {
+    for (const c of this.awake) {
       const b = c.bld;
       const hiddenFloor = c.inBus || c.inCar || (b && b.viewFloorMax != null && c.root.position.y > b.viewFloorMax * FH + 1);
       const insideClosed = b && b.complete && !b.isCut && c !== this.selected;
@@ -571,7 +663,7 @@ export class Game {
   }
 
   refreshText() {
-    for (const c of this.chars) c.updateLabel();
+    for (const c of this.awake) c.updateLabel();
     for (const b of this.town.all) b.refreshText();
   }
 }

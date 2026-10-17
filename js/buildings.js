@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { box, cyl, ball, mesh, sphere, coneGeo, cylGeo, signTexture, SIGN_AR, shadows, mergeStatic, flatten, rand, pick, clamp, easeOutBack, dist2d } from './util.js';
 import { TILE } from './path.js';
+import { tileOf } from './tiles.js';
 import { buildShell, FH } from './buildgen.js';
 import { F } from './interiors.js';
 import { NIGHT, addGlow } from './daynight.js';
@@ -214,13 +215,10 @@ const OPEN = {
     const { W, D } = b, base = b.base();
     box(W, .07, D, '#5d626b', 0, .035, 0, base);
     const pc = b.piece(0, 0);
-    b.parkSpots = [];
+    b.parkSpots = garageBays(D);
     for (const row of [-1, 1]) {
       const z = row * (D / 2 - 2.5);
-      for (let k = -1; k <= 1; k++) {
-        b.parkSpots.push([k * 3.2, z, row < 0 ? 0 : Math.PI]);
-        box(.1, .01, 4.4, '#ffffff', k * 3.2 - 1.6, .075, z, pc);
-      }
+      for (let k = -1; k <= 1; k++) box(.1, .01, 4.4, '#ffffff', k * 3.2 - 1.6, .075, z, pc);
       box(.1, .01, 4.4, '#ffffff', 3.2 + 1.6, .075, z, pc);
     }
     for (const x of [-W / 2 + .3, 0, W / 2 - .3]) cyl(.12, .12, 2.8, '#9aa0a8', x, 1.4, -D / 2 + .4, pc, 8);
@@ -278,6 +276,20 @@ const OPEN = {
     b.spots.door = [[0, D / 2 + 1, Math.PI, 'stand', 0, 0]];
   },
 };
+
+function garageBays(D) {
+  const out = [];
+  for (const row of [-1, 1]) for (let k = -1; k <= 1; k++) out.push([k * 3.2, row * (D / 2 - 2.5), row < 0 ? 0 : Math.PI]);
+  return out;
+}
+// the same building always gets the same furniture, windows and trees (its own random numbers),
+// so its full model can be removed when the camera leaves and built again exactly the same later
+function seeded(seed, fn) {
+  const R = Math.random;
+  let s = (Math.imul(seed + 1, 2654435761) >>> 0) || 1;
+  Math.random = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  try { return fn(); } finally { Math.random = R; }
+}
 
 // ---------- placement on the tile grid ----------
 export function footprint(spec, i, j, rot) {
@@ -351,6 +363,10 @@ export class Building {
     this.signs = []; this.lightSpots = []; this.floorGroups = []; this.roofGroups = [];
     this.seatRes = {}; this.anims = []; this.sources = [];
     this.cutState = '';
+    this.marks = [];          // rectangles this building blocks in the walking grid
+    this.layout = false;      // spots, walls, beds... are known once the full model has been built
+    this.awake = false;       // has its full 3D model (only near the camera)
+    this.cropGrow = d.crops || null;
 
     const fp = footprint(this.spec, d.i, d.j, this.rot);
     this.tiles = fp.list;
@@ -367,31 +383,14 @@ export class Building {
     this.cz = tcz - this.sin * this.yard / 2;
     this.center = { x: this.cx, z: this.cz };
     for (const [a, c] of this.tiles) game.tiles.claim(a, c, this.id);
-    game.props.clearRect(tcx - fp.rw * TILE / 2, tcz - fp.rd * TILE / 2, tcx + fp.rw * TILE / 2, tcz + fp.rd * TILE / 2);
-
-    this.group = new THREE.Group();
-    this.group.position.set(this.cx, 0, this.cz);
-    this.group.rotation.y = this.angle;
-    this.model = new THREE.Group();
-    this.group.add(this.model);
-
-    if (this.def.open) OPEN[this.type](this);
-    else buildShell(this, { ...this.spec, signBg: this.def.signBg }, this.W, this.D);
-    if (this.yard) this.buildCarport();
-    if (this.crops && d.crops) d.crops.forEach((g, k) => { const c = this.crops[k]; if (c) { c.grow = g; c.g.scale.setScalar(1.7 * (.25 + .75 * g)); } });
-    this.group.updateMatrixWorld(true);
-    for (const p of this.pieces) { flatten(p); mergeStatic(p); }
-    shadows(this.group);
-    this.group.traverse(o => { if (o.isMesh && o.parent?.userData.interior) o.castShadow = false; });
-    this.roofTop ??= 3;
-    for (const [x, y, z] of this.lightSpots) {
-      const w = this.toWorld(x, z);
-      this.sources.push(game.daynight.addSource({ pos: new THREE.Vector3(w.x, y, w.z), power: 7, alive: () => this.alive && this.complete }));
-    }
-    game.scene.add(this.group);
+    if (!game.loading) game.props.clearRect(tcx - fp.rw * TILE / 2, tcz - fp.rd * TILE / 2, tcx + fp.rw * TILE / 2, tcz + fp.rd * TILE / 2);
+    // known without the 3D model: where the cars park, how tall it is
+    if (this.yard) this.parkSpots = [[-this.W / 2 - this.yard / 2, -1.2], [-this.W / 2 - this.yard / 2, 3.6]];
+    if (this.type === 'garage') this.parkSpots = garageBays(this.D);
+    this.roofTop = this.def.open ? 3 : this.wallTop() + (['gable', 'hip'].includes(this.spec.roof) ? Math.min(this.W, this.D) * .3 : .8);
 
     this.footRect = this.rectToWorld([-this.W / 2 - .3, -this.D / 2 - .3, this.W / 2 + .3, this.D / 2 + .3]);
-    if (!this.def.open) {
+    if (!this.def.open && !game.loading) {
       // nothing close to the walls, and nothing in front of the entrance and the sign
       const front = this.rectToWorld([-this.W / 2 - this.yard - 2.5, -this.D / 2 - 2.5, this.W / 2 + 2.5, this.D / 2 + 4.8]);
       const hadStop = game.props.list.some(p => p.type === 'busstop');
@@ -399,12 +398,92 @@ export class Building {
       if (hadStop && !game.props.list.some(p => p.type === 'busstop')) setTimeout(() => game.bus.ensureStop(), 0);
     }
     if (this.progress >= 1) this.finish(true);
-    else {
-      this.world.grid.mark(...this.footRect, 1);
-      this.makeScaffold();
-      this.reveal(true);
-    }
+    else this.setMarks([this.footRect]);
+    // the full model comes when the camera is near (lod.js); until then a simple block stands here
+    game.proxies.show(this, true);
+    this.item = { layer: 'bld', x: this.cx, z: this.cz, build: () => this.wake(), drop: () => this.sleep() };
+    game.chunks.add(this.item);
   }
+
+  // ----- full model near the camera, a simple block far away -----
+  wallTop() { return (this.spec.floors || 1) * FH; }
+  wake() {
+    if (this.awake || !this.alive) return;
+    this.generate();
+    this.awake = true;
+    this.game.scene.add(this.group);
+    this.game.proxies.show(this, false);
+    this.game.town.awake.add(this);
+  }
+  sleep() {
+    if (!this.awake) return;
+    this.awake = false;
+    this.game.town.awake.delete(this);
+    this.dropModel();
+    if (this.alive) this.game.proxies.show(this, true);
+  }
+  // build the full model (it also tells where the beds, seats and walls are)
+  generate() {
+    this.dropModel();
+    const grow = this.crops ? this.crops.map(c => c.grow) : this.cropGrow;
+    this.pieces = []; this.blocks = []; this.wallRects = []; this.spots = {}; this.points = {};
+    this.signs = []; this.lightSpots = []; this.floorGroups = []; this.roofGroups = []; this.anims = [];
+    this.crops = null;
+    this.group = new THREE.Group();
+    this.group.position.set(this.cx, 0, this.cz);
+    this.group.rotation.y = this.angle;
+    this.model = new THREE.Group();
+    this.group.add(this.model);
+    seeded(this.id, () => {
+      if (this.def.open) OPEN[this.type](this);
+      else buildShell(this, { ...this.spec, signBg: this.def.signBg }, this.W, this.D);
+      if (this.yard) this.buildCarport();
+    });
+    if (this.crops && grow) grow.forEach((g, k) => { const c = this.crops[k]; if (c) { c.grow = g; c.g.scale.setScalar(1.7 * (.25 + .75 * g)); } });
+    this.group.updateMatrixWorld(true);
+    for (const p of this.pieces) { flatten(p); mergeStatic(p); }
+    shadows(this.group);
+    this.group.traverse(o => { if (o.isMesh && o.parent?.userData.interior) o.castShadow = false; });
+    this.roofTop ??= 3;
+    for (const [x, y, z] of this.lightSpots) {
+      const w = this.toWorld(x, z);
+      this.sources.push(this.game.daynight.addSource({ pos: new THREE.Vector3(w.x, y, w.z), power: 7, alive: () => this.alive && this.complete }));
+    }
+    if (!this.layout) {
+      this.layout = true;
+      if (this.complete) this.setMarks(this.wallMarks());   // now the real walls block, not the whole plot
+    }
+    if (this.complete) this.showFinished(true);
+    else { this.makeScaffold(); this.reveal(true); }
+  }
+  dropModel() {
+    if (this.crops) for (const c of this.crops) c.g = null;
+    for (const s of this.sources) this.game.daynight.removeSource(s);
+    this.sources = [];
+    if (this.siteLabel) { this.siteLabel.parent?.remove(this.siteLabel); this.siteLabel = null; this.siteEl = null; }
+    if (!this.group) return;
+    this.game.scene.remove(this.group);
+    this.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
+    for (const m of this.signs) { m.material.map?.dispose(); m.material.dispose(); }
+    this.group = this.model = this.lod = this.scaffold = this.water = this.bobber = this.lights = null;
+    this.pieces = []; this.signs = []; this.floorGroups = []; this.roofGroups = []; this.anims = [];
+    this.lodOn = false; this.cutState = ''; this.isCut = false; this.viewFloorMax = null; this.needLod = false;
+  }
+  // spots, beds and walls are needed (someone goes inside): build the model once to learn them
+  need() {
+    if (this.layout || !this.alive || this.group) return;
+    this.generate();
+    if (!this.awake) this.dropModel();
+  }
+  setMarks(rects) {
+    const g = this.world.grid;
+    for (const r of this.marks) g.mark(...r, -1);
+    this.marks = rects;
+    for (const r of rects) g.mark(...r, 1);
+  }
+  wallMarks() { return [...this.wallRects, ...this.blocks].map(r => this.rectToWorld(r)); }
+  // how many people can live here (before the beds are known: from the size)
+  capacity() { return this.layout ? this.count('bed') : this.spec.role === 'apartment' ? Math.max(1, (this.spec.floors - 1) * 3) : 1; }
 
   world_tree(x, z, s, parent) {
     const g = new THREE.Group();
@@ -483,10 +562,12 @@ export class Building {
     if (this.spec.name) return this.spec.name;
     return this.type === 'shop' ? t('b_shop_' + this.variant) : t('b_' + this.type);
   }
-  refreshText() { this.signs.forEach(m => this.drawSign(m)); this.updateSiteLabel(true); }
+  refreshText() { if (this.awake) this.signs.forEach(m => this.drawSign(m)); this.updateSiteLabel(true); }
 
   // ----- spots (where characters go) -----
   spotList(kind) {
+    const outside = kind === 'door' || kind === 'front';
+    if (!this.layout && !(outside && !this.def.open)) this.need();
     if (this.spots[kind]?.length) return this.spots[kind];
     if (kind === 'door' || kind === 'counter' || kind === 'customer') return [[this.doorX || 0, this.D / 2 + 1.5, Math.PI, 'stand', 0, 0]];
     if (kind === 'front') return [[this.doorX || 0, this.D / 2 + 2.6, 0, 'stand', 0, 0]];
@@ -498,9 +579,10 @@ export class Building {
     const w = this.toWorld(s[0], s[1]);
     return { x: w.x, z: w.z, face: this.angle + (s[2] ?? 0), pose: s[3] || 'stand', y: s[4] || 0, floor: s[5] || 0, idx: i };
   }
-  count(kind) { return this.spots[kind]?.length || 0; }
-  stairWorld() { return this.stairSpot ? this.toWorld(this.stairSpot[0], this.stairSpot[1]) : null; }
+  count(kind) { this.need(); return this.spots[kind]?.length || 0; }
+  stairWorld() { this.need(); return this.stairSpot ? this.toWorld(this.stairSpot[0], this.stairSpot[1]) : null; }
   point(name) {
+    this.need();
     const p = this.points[name] || [0, this.roofTop, 0];
     const w = this.toWorld(p[0], p[2]);
     return { x: w.x, y: p[1], z: w.z };
@@ -526,11 +608,12 @@ export class Building {
   release(kind, i) { if (this.seatRes[kind]) delete this.seatRes[kind][i]; }
 
   // ----- farm -----
-  randomCrop() { return Math.floor(Math.random() * (this.crops?.length || 1)); }
-  cropSpot(k) { const c = this.crops[k], w = this.toWorld(c.lx, c.lz + .9); return { x: w.x, z: w.z, face: this.angle + Math.PI, y: 0 }; }
+  randomCrop() { this.need(); return Math.floor(Math.random() * (this.crops?.length || 1)); }
+  cropSpot(k) { this.need(); const c = this.crops[k], w = this.toWorld(c.lx, c.lz + .9); return { x: w.x, z: w.z, face: this.angle + Math.PI, y: 0 }; }
   tendCrop(k) {
+    this.need();
     const c = this.crops[k];
-    const sc = g => c.g.scale.setScalar(1.7 * (.25 + .75 * g));
+    const sc = g => c.g?.scale.setScalar(1.7 * (.25 + .75 * g));
     if (c.grow >= 1) { c.grow = .25; sc(c.grow); return pick(['🥕', '🥬', '🌽', '🎃']); }
     c.grow = Math.min(1, c.grow + .35); sc(c.grow);
     return null;
@@ -623,23 +706,27 @@ export class Building {
   addProgress() {}
   tickConstruction() {
     if (this.complete) return;
+    const before = Math.floor(this.progress * 50);
     this.progress = Math.min(1, (Date.now() - this.startedAt) / this.duration);
-    this.reveal(false);
-    this.updateSiteLabel();
+    if (this.awake) { this.reveal(false); this.updateSiteLabel(); }
+    else if (Math.floor(this.progress * 50) !== before) this.game.proxies.show(this, true);
     if (this.progress >= 1) this.finish(false);
   }
   finish(silent) {
-    if (!silent) this.world.grid.mark(...this.footRect, -1);
     this.complete = true;
     this.progress = 1;
-    for (const p of this.pieces) { p.userData.revealed = true; if (silent) p.position.y = p.userData.baseY; this.setVis(p); }
-    if (this.scaffold) { this.group.remove(this.scaffold); this.scaffold = null; }
-    if (this.siteLabel) { this.group.remove(this.siteLabel); this.siteLabel = null; this.siteEl = null; }
-    for (const r of [...this.wallRects, ...this.blocks]) this.world.grid.mark(...this.rectToWorld(r), 1);
+    this.setMarks(this.layout ? this.wallMarks() : [this.footRect]);
+    if (this.awake) this.showFinished(silent);
+    else if (this.item) this.game.proxies.show(this, true);
     if (!silent) {
       this.game.effects.emit('confetti', { x: this.cx, y: this.roofTop + 1, z: this.cz }, 80);
       this.game.onBuilt(this);
     }
+  }
+  showFinished(silent) {
+    for (const p of this.pieces) { p.userData.revealed = true; if (silent) p.position.y = p.userData.baseY; this.setVis(p); }
+    if (this.scaffold) { this.group.remove(this.scaffold); this.scaffold = null; }
+    if (this.siteLabel) { this.group.remove(this.siteLabel); this.siteLabel = null; this.siteEl = null; }
     this.needLod = true;
     if (silent) this.buildLod();
   }
@@ -727,21 +814,27 @@ export class Building {
     }
   }
 
+  // far away (no model): only the clock of a building site and a fire keep going
+  updateAsleep(dt) {
+    if (!this.complete) { this.siteTimer = (this.siteTimer || Math.random()) - dt; if (this.siteTimer <= 0) { this.siteTimer = 1; this.tickConstruction(); } }
+    if (this.fire) { this.fire.age += dt; if (this.fire.age > 80) this.putOut(); }
+  }
+
   dispose() {
     this.alive = false;
-    this.game.scene.remove(this.group);
-    if (this.complete) for (const r of [...this.wallRects, ...this.blocks]) this.world.grid.mark(...this.rectToWorld(r), -1);
-    else this.world.grid.mark(...this.footRect, -1);
+    this.game.chunks.remove(this.item);
+    this.sleep();
+    this.dropModel();
+    this.game.proxies.release(this);
+    this.setMarks([]);
     for (const [a, c] of this.tiles) this.game.tiles.release(a, c, this.id);
-    for (const s of this.sources) this.game.daynight.removeSource(s);
-    this.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
   }
 
   toJSON() {
     return {
       id: this.id, spec: this.spec, i: this.tile.i, j: this.tile.j, rot: this.rot,
       progress: this.complete ? 1 : +this.progress.toFixed(4), startedAt: this.startedAt, duration: this.duration, ownerId: this.ownerId, builtBy: this.builtBy, residents: this.residents,
-      crops: this.crops?.map(c => +c.grow.toFixed(2)),
+      crops: this.crops?.map(c => +c.grow.toFixed(2)) ?? this.cropGrow ?? undefined,
     };
   }
 }
@@ -770,15 +863,28 @@ export function makeGhostModel(game, spec) {
 
 // ---------- all buildings ----------
 export class Town {
-  constructor(game) { this.game = game; this.all = []; this.nextId = 1; }
+  constructor(game) { this.game = game; this.all = []; this.byId = new Map(); this.awake = new Set(); this.nextId = 1; }
   create(spec, i, j, rot, o = {}) {
     const b = new Building(this.game, { id: o.id ?? this.nextId, spec, i, j, rot, progress: o.progress, startedAt: o.startedAt, duration: o.duration, ownerId: o.ownerId, builtBy: o.builtBy, residents: o.residents, crops: o.crops });
     this.nextId = Math.max(this.nextId, b.id + 1);
     this.all.push(b);
+    this.byId.set(b.id, b);
+    this.game.landMap?.mark();
     return b;
   }
-  remove(b) { b.dispose(); this.all.splice(this.all.indexOf(b), 1); }
-  get(id) { return id == null ? null : this.all.find(b => b.id === id) || null; }
+  remove(b) { b.dispose(); this.all.splice(this.all.indexOf(b), 1); this.byId.delete(b.id); this.game.landMap?.mark(); }
+  get(id) { return id == null ? null : this.byId.get(id) || null; }
+  // the buildings within r of a point (found through the tiles: fast in a big town)
+  near(x, z, r) {
+    const T = this.game.tiles, out = new Set(), n = Math.ceil(r / TILE) + 1, i0 = tileOf(x), j0 = tileOf(z);
+    for (let i = i0 - n; i <= i0 + n; i++) for (let j = j0 - n; j <= j0 + n; j++) {
+      const id = T.get(i, j)?.building;
+      if (id == null) continue;
+      const b = this.byId.get(id);
+      if (b && Math.hypot(b.cx - x, b.cz - z) < r + Math.max(b.W, b.D) / 2) out.add(b);
+    }
+    return [...out];
+  }
   of(type, completeOnly = true) { return this.all.filter(b => b.kind === type && (!completeOnly || b.complete)); }
   byRole(role) { return this.all.filter(b => b.complete && (b.spec.role === role)); }
   has(type) { return this.all.some(b => b.kind === type && b.complete); }
@@ -801,9 +907,11 @@ export class Town {
   }
   burning() { return this.all.filter(b => b.fire); }
   at(x, z) {
-    for (const b of this.all) { const l = b.toLocal(x, z); if (Math.abs(l.x) < b.W / 2 && Math.abs(l.z) < b.D / 2) return b; }
-    return null;
+    const id = this.game.tiles.get(tileOf(x), tileOf(z))?.building, b = id != null && this.byId.get(id);
+    if (!b) return null;
+    const l = b.toLocal(x, z);
+    return Math.abs(l.x) < b.W / 2 && Math.abs(l.z) < b.D / 2 ? b : null;
   }
-  update(dt, tm) { for (const b of this.all) b.update(dt, tm); }
-  clear() { for (const b of this.all) b.dispose(); this.all = []; this.nextId = 1; }
+  update(dt, tm) { for (const b of this.all) { if (b.awake) b.update(dt, tm); else b.updateAsleep(dt); } }
+  clear() { for (const b of this.all) b.dispose(); this.all = []; this.byId.clear(); this.awake.clear(); this.nextId = 1; }
 }
