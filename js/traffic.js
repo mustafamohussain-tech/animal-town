@@ -7,7 +7,7 @@ import { sampleCurve } from './curves.js';
 import { makeCar } from './vehicles.js';
 import { box } from './util.js';
 
-const H = TILE / 2, LANE = 2.7;
+const H = TILE / 2, LANE = 1.8;   // centre of the right lane
 const SIDE = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
 const key = (i, j) => i + ',' + j;
 const right = (dx, dz) => [-dz, dx];   // the right-hand side of a direction (x east, z south)
@@ -84,7 +84,7 @@ export class Traffic {
   // ---------- turning a route into points along the right lane ----------
   lanePath(route) {
     const pts = [], gates = [];
-    const push = (x, z, y = 0) => pts.push({ x, z, y });
+    const push = (x, z, y = this.T.groundY(x, z)) => pts.push({ x, z, y });
     const dirBetween = (a, b) => {
       if (b.via) { const l = b.via.links[b.fwd ? 0 : 1]; return SIDE[l.side]; }   // leaving a through the curve's side
       return [Math.sign(b.i - a.i), Math.sign(b.j - a.j)];
@@ -153,7 +153,8 @@ export class Traffic {
     const taxiOnly = c.forceRide === 'taxi';
     c.forceRide = null;
     const own = !taxiOnly && this.ownCar(c);
-    const from = own ? this.nearestRoad(own.x, own.z) : this.nearestRoad(p.x, p.z), to = this.nearestRoad(x, z);
+    const exit = own && own.out?.length ? own.out[own.out.length - 1] : own;
+    const from = own ? this.nearestRoad(exit.x, exit.z) : this.nearestRoad(p.x, p.z), to = this.nearestRoad(x, z);
     if (!from || !to || (from.i === to.i && from.j === to.j)) return null;
     const ride = this.route(from, to);
     if (!ride || ride.length < 3) return null;
@@ -166,7 +167,7 @@ export class Traffic {
     let car;
     if (own) {
       own.busy = true;
-      car = { group: own.group, own, pts: [{ x: own.x, z: own.z, y: 0 }, start], gates: [], k: 0, v: 0, state: 'pickup', trip };
+      car = { group: own.group, own, pts: [{ x: own.x, z: own.z, y: 0 }, ...(own.out || []).map(q => ({ x: q.x, z: q.z, y: 0 })), start], gates: [], k: 0, v: 0, state: 'pickup', trip };
     } else {
       // a taxi comes from a few streets away
       const spawn = this.away(from, 5);
@@ -181,7 +182,8 @@ export class Traffic {
     }
     trip.car = car;
     this.cars.push(car);
-    c.path = g.world.grid.findPath(p.x, p.z, curb.x, curb.z);
+    if (own) { trip.curb = { x: own.x + Math.cos(own.rot) * 1.6, z: own.z - Math.sin(own.rot) * 1.6 }; car.state = 'wait'; car.atStart = true; }
+    c.path = g.world.grid.findPath(p.x, p.z, trip.curb.x, trip.curb.z);
     c.say(own ? '🚗' : '🚕', 2.5);
     return trip;
   }
@@ -204,16 +206,17 @@ export class Traffic {
       const g = car.group, v = car.own;
       v.busy = false;
       v.x = g.position.x; v.z = g.position.z; v.rot = g.rotation.y;
-      g.position.y = 0;
+      v.bay = null; v.out = []; v.away = true;   // parked at the curb where the trip ended
+      g.position.y = this.T.groundY(g.position.x, g.position.z);
       const home = this.game.town.get(this.game.getChar(v.ownerId)?.homeId);
-      if (home && Math.hypot(home.center.x - v.x, home.center.z - v.z) < 30) this.game.vehicles.park(v);
+      if (home && Math.hypot(home.center.x - v.x, home.center.z - v.z) < 30) { v.away = false; this.game.vehicles.park(v); }
       this.cars.splice(this.cars.indexOf(car), 1);
       return;
     }
     const here = this.nearestRoad(car.group.position.x, car.group.position.z), far = here && this.away(here, 7);
     const r = here && far && this.route(here, far);
     const lp = r && r.length > 1 ? this.lanePath(r) : { pts: [], gates: [] };
-    car.pts = lp.pts; car.gates = lp.gates; car.k = 0; car.state = 'leave';
+    car.pts = lp.pts; car.gates = lp.gates; car.k = 0; car.from = null; car.state = 'leave';
     if (!lp.pts.length) this.dropCar(car);
   }
   dropCar(car) {
@@ -236,7 +239,9 @@ export class Traffic {
         c.path = null;
         tr.phase = 'ride';
         car.state = 'ride';
-        car.pts = tr.ride.pts; car.gates = tr.ride.gates; car.k = 0;
+        // an own car first rolls out of its carport / bay along the driveway
+        const pre = car.own ? (car.own.out || []).map(q => ({ x: q.x, z: q.z, y: 0 })) : [];
+        car.pts = [...pre, ...tr.ride.pts]; car.gates = tr.ride.gates.map(q => ({ ...q, k: q.k + pre.length })); car.k = 0; car.from = null;
       }
       return;
     }
@@ -262,9 +267,13 @@ export class Traffic {
     }
     car.v += Math.max(-14 * dt, Math.min(6 * dt, want - car.v));
     let step = Math.max(0, car.v) * dt;
-    if (d <= step || d < .05) { p.x = tgt.x; p.z = tgt.z; car.k++; }
-    else { p.x += dx / d * step; p.z += dz / d * step; }
-    p.y = tgt.y ?? 0;
+    const from = car.from || (car.from = { x: p.x, y: p.y, z: p.z });
+    if (d <= step || d < .05) { p.x = tgt.x; p.z = tgt.z; p.y = tgt.y ?? 0; car.k++; car.from = { x: p.x, y: p.y, z: p.z }; }
+    else {
+      p.x += dx / d * step; p.z += dz / d * step;
+      const len = Math.hypot(tgt.x - from.x, tgt.z - from.z) || 1;
+      p.y = from.y + ((tgt.y ?? 0) - from.y) * Math.max(0, Math.min(1, 1 - (d - step) / len));
+    }
     if (d > .05) {
       let a = Math.atan2(dx, dz) - g.rotation.y;
       a = Math.atan2(Math.sin(a), Math.cos(a));
@@ -279,7 +288,7 @@ export class Traffic {
     const out = { x: p.x + rx * (H - LANE - .9), z: p.z + rz * (H - LANE - .9) };
     c.inCar = false;
     c.trip = null;
-    c.root.position.set(out.x, 0, out.z);
+    c.root.position.set(out.x, this.T.groundY(out.x, out.z), out.z);
     c.say(pick2(['👋', '😊', '🏁']), 2);
     c.path = g.world.grid.findPath(out.x, out.z, tr.final.x, tr.final.z);
     c.moving = true;

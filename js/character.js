@@ -236,7 +236,7 @@ export class Character {
       this.upstairs = null;
     }
     if (this.trip) this.game.traffic.cancel(this);
-    p.y = 0;
+    p.y = this.game.tiles.groundY(p.x, p.z);
     // far away: by car (own car or taxi) when there are roads, otherwise on foot
     const tr = this.game.traffic;
     if (tr?.wantsRide(this, x, z)) this.trip = tr.startTrip(this, x, z);
@@ -302,6 +302,7 @@ export class Character {
       if (target) {
         p.x += dx / d * step;
         p.z += dz / d * step;
+        if (!this.upstairs) p.y = this.game.tiles.groundY(p.x, p.z);
         this.heading = Math.atan2(dx, dz);
         walking = true;
       } else if (this.trip) {
@@ -399,10 +400,11 @@ export class Character {
         }
         case 'swim': {
           // only head and shoulders above the water (the rest is under the ground line)
-          const s = Math.sin(tt * 4);
-          P.bodyY = -1.05; P.bodyRx = .45; P.headRx = -.4;
-          P.armRx = -1.7 + s * 1.3; P.armLx = -1.7 - s * 1.3; P.armRz = -.35; P.armLz = .35;
-          P.legL = s * .3; P.legR = -s * .3; break;
+          const s = Math.sin(tt * 3.4), kick = Math.sin(tt * 11);
+          P.bodyY = -1.02 + Math.sin(tt * 6.8) * .04; P.bodyRx = .5; P.bodyRz = s * .14;
+          P.headRx = -.45; P.headRy = Math.max(0, Math.sin(tt * 1.7)) * .55;
+          P.armRx = -1.55 + s * 1.5; P.armLx = -1.55 - s * 1.5; P.armRz = -.25 - Math.max(0, s) * .25; P.armLz = .25 + Math.max(0, -s) * .25;
+          P.legL = kick * .32; P.legR = -kick * .32; break;
         }
         case 'sleep': case 'lie': case 'sleepGround':
           P.bodyRx = -1.5; P.bodyY = .32; P.armRz = -.1; P.armLz = .1; break;

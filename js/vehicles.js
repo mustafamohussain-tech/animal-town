@@ -80,22 +80,49 @@ export class Vehicles {
   }
   ofOwner(id) { return this.list.filter(v => v.ownerId === id); }
 
-  // park on the street in front of the owner's home (cars side by side); no home -> somewhere near the centre
+  // where a car sleeps: the carport / driveway of the owner's house, else a free bay in the nearest car park,
+  // else at the curb of the nearest street. Never on the grass.
   park(v, newSpot) {
     const g = this.game, c = g.getChar(v.ownerId);
     const home = c && g.town.get(c.homeId);
-    if (home?.complete && !home.def.open) {
-      const k = this.ofOwner(v.ownerId).indexOf(v);
-      const w = home.toWorld(home.W / 2 - 2.6 - (k % 3) * 5, home.D / 2 + 3.8 + Math.floor(k / 3) * 2.4);
-      v.x = w.x; v.z = w.z; v.rot = home.angle + Math.PI / 2;
-      v.home = home.id;
-    } else if (newSpot || v.x == null) {
-      const p = g.world.randomSpot({ x: 0, z: 0 }, 24);
-      v.x = p.x; v.z = p.z; v.rot = rand(0, Math.PI * 2);
-      v.home = null;
+    const k = this.ofOwner(v.ownerId).indexOf(v);
+    v.bay = null; v.out = [];
+    let s = null;
+    if (home?.complete && home.parkSpots && k < home.parkSpots.length) {
+      const [lx, lz] = home.parkSpots[k], w = home.toWorld(lx, lz), f = home.toWorld(lx, home.D / 2 + 3.4);
+      s = { x: w.x, z: w.z, rot: home.angle, out: [f] };
     }
-    v.group.position.set(v.x, 0, v.z);
+    if (!s) s = this.garageSpot(v, home ? home.center : c ? c.root.position : { x: 0, z: 0 });
+    if (!s) s = this.curbSpot(home ? home.center : c ? c.root.position : { x: 0, z: 0 });
+    if (s) { v.x = s.x; v.z = s.z; v.rot = s.rot; v.bay = s.bay || null; v.out = s.out || []; }
+    else if (newSpot || v.x == null) { v.x = 0; v.z = 0; v.rot = 0; }
+    v.home = home?.complete ? home.id : null;
+    v.group.position.set(v.x, this.game.tiles.groundY(v.x, v.z), v.z);
     v.group.rotation.y = v.rot;
+  }
+  garageSpot(v, near) {
+    let best = null, bd = 90;
+    for (const b of this.game.town.of('garage')) {
+      const d = Math.hypot(b.center.x - near.x, b.center.z - near.z);
+      if (d >= bd) continue;
+      const free = b.parkSpots.findIndex((_, i) => !this.list.some(o => o !== v && o.bay === b.id + ':' + i));
+      if (free < 0) continue;
+      const [lx, lz, r] = b.parkSpots[free], w = b.toWorld(lx, lz);
+      bd = d;
+      best = { x: w.x, z: w.z, rot: b.angle + r, bay: b.id + ':' + free, out: [b.toWorld(lx, 0), b.toWorld(0, b.D / 2 + 2)] };
+    }
+    return best;
+  }
+  curbSpot(near) {
+    const T = this.game.tiles, tr = this.game.traffic;
+    const t = tr?.nearestRoad(near.x, near.z, 4);
+    if (!t) return null;
+    for (const [a, b] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      if (T.isDrivable(t.i + a, t.j + b)) continue;
+      const off = 2.4, x = t.i * 12 + a * off + (a ? 0 : -2), z = t.j * 12 + b * off + (b ? 0 : -2);
+      return { x, z, rot: a ? 0 : Math.PI / 2 };
+    }
+    return { x: t.i * 12 + 2.4, z: t.j * 12, rot: 0 };
   }
 
   update(dt) {
@@ -108,7 +135,8 @@ export class Vehicles {
       if (!c) { this.remove(v); continue; }
       const home = this.game.town.get(c.homeId);
       const want = home?.complete ? home.id : null;
-      if (want !== (v.home ?? null)) this.park(v, true);
+      // a new home, or a car park was built for a car waiting at the curb
+      if (want !== (v.home ?? null) || (!v.bay && !v.out?.length && !v.away && this.game.town.of('garage').length)) this.park(v, true);
     }
   }
 

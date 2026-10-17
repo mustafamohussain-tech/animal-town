@@ -109,6 +109,33 @@ function segDist(px, pz, a, b) {
   return Math.hypot(px - a.x - dx * u, pz - a.z - dz * u);
 }
 
+function edgeDist(poly, x, z) {
+  let d = Infinity;
+  for (let k = 0; k < poly.length; k++) d = Math.min(d, segDist(x, z, poly[k], poly[(k + 1) % poly.length]));
+  return d;
+}
+// a loop of points part way (u) from the shore to the middle, always in the water and away from the
+// shore and the pier, so ducks, boats and swimmers each have their own lane and never go on land
+function ring(poly, c, u, avoid = null, minEdge = 2) {
+  const ok = (x, z) => inPoly(poly, x, z) && edgeDist(poly, x, z) > minEdge && !(avoid && segDist(x, z, avoid[0], avoid[1]) < 3);
+  let out = [];
+  for (let k = 0; k < poly.length; k += 2) {
+    for (let uu = u; uu <= .9; uu += .06) {
+      const x = poly[k].x + (c.x - poly[k].x) * uu, z = poly[k].z + (c.z - poly[k].z) * uu;
+      if (ok(x, z)) { out.push({ x, z }); break; }
+    }
+  }
+  // drop points whose way to the next one would cross land
+  for (let pass = 0; pass < 3; pass++) {
+    out = out.filter((p, i) => {
+      const q = out[(i + 1) % out.length];
+      for (let s = .25; s < 1; s += .25) if (!inPoly(poly, p.x + (q.x - p.x) * s, p.z + (q.z - p.z) * s)) return false;
+      return true;
+    });
+  }
+  return out.length >= 3 ? out : [{ x: c.x, z: c.z }, { x: c.x + .5, z: c.z }, { x: c.x, z: c.z + .5 }];
+}
+
 // ---------- little things around the water ----------
 function reeds(g, x, z) {
   for (let k = 0; k < 5; k++) {
@@ -211,7 +238,7 @@ export class Water {
     this.wetCache.clear();
     this.dirty = true;
     const b = this.bounds(w), T = this.game.tiles;
-    for (let i = tileOf(b.x0) - 1; i <= tileOf(b.x1) + 1; i++) for (let j = tileOf(b.z0) - 1; j <= tileOf(b.z1) + 1; j++) if (T.isRoad(i, j)) T.rebuild(i, j);
+    for (let i = tileOf(b.x0) - 2; i <= tileOf(b.x1) + 2; i++) for (let j = tileOf(b.z0) - 2; j <= tileOf(b.z1) + 2; j++) if (T.isRoad(i, j)) T.rebuild(i, j);
   }
   bounds(w) {
     const m = w.kind === 'river' ? w.width / 2 + 3 : 3;
@@ -240,17 +267,12 @@ export class Water {
       const { poly, nrm, c } = lakeOutline(w.pts);
       Object.assign(w, { poly, nrm, c });
       g.add(flatShape(poly.map((p, k) => ({ x: p.x + nrm[k].x * 1.8, z: p.z + nrm[k].z * 1.8 })), SAND_Y, MAT.sand, 1));
-      g.add(flatShape(poly, WATER_Y, MAT.lake, .08));
+      g.add(flatShape(poly, WATER_Y - (w.id % 6) * .002, MAT.lake, .08));   // each body a hair apart: no flicker where they meet
       const n = poly.length;
       for (let k = 0; k < n; k += Math.max(3, Math.floor(n / 12))) {
         const p = poly[k], q = nrm[k];
         if (Math.random() < .6) reeds(deco, p.x + q.x * .9, p.z + q.z * .9);
         else rock(deco, p.x + q.x * 1.1, p.z + q.z * 1.1);
-      }
-      for (let k = 0; k < Math.min(14, n / 3); k++) {
-        const p = pick(poly), u = rand(.1, .3);
-        const x = p.x + (c.x - p.x) * u, z = p.z + (c.z - p.z) * u;
-        if (inPoly(poly, x, z)) lily(deco, x, z);
       }
       // a wooden pier for fishing, from the shore point closest to the town centre
       let k0 = 0;
@@ -260,8 +282,17 @@ export class Water {
       makePier(deco, { x: sp.x + sn.x * 1.6, z: sp.z + sn.z * 1.6 }, into, len + 1.6);
       w.pierSeg = [{ x: sp.x + sn.x * 1.6, z: sp.z + sn.z * 1.6 }, { x: sp.x + into.x * len, z: sp.z + into.z * len }];
       w.pier = { x: sp.x + into.x * len, z: sp.z + into.z * len, face: Math.atan2(into.x, into.z), bob: { x: sp.x + into.x * (len + 3), y: WATER_Y, z: sp.z + into.z * (len + 3) } };
-      // a slow rowing boat and some ducks on an inner loop
-      w.loop = poly.filter((_, k) => k % 2 === 0).map(p => ({ x: p.x + (c.x - p.x) * .45, z: p.z + (c.z - p.z) * .45 }));
+      // lily pads near the shore (only on the water, not on the pier)
+      for (let k = 0; k < Math.min(16, n / 3); k++) {
+        const p = pick(poly), u = rand(.04, .14);
+        const x = p.x + (c.x - p.x) * u, z = p.z + (c.z - p.z) * u, e = inPoly(poly, x, z) && edgeDist(poly, x, z);
+        if (e > .9 && e < 4.5 && segDist(x, z, w.pierSeg[0], w.pierSeg[1]) > 2.5) lily(deco, x, z);
+      }
+      // separate lanes on the water: swimmers near the shore, ride boats, the old boat, ducks in the middle
+      w.swimLoop = ring(poly, c, .22, w.pierSeg, 2.2);
+      w.rideLoop = ring(poly, c, .34, w.pierSeg, 2.6);
+      w.loop = ring(poly, c, .46, null, 3);
+      w.duckLoop = ring(poly, c, .62, null, 3);
       w.boat = makeBoat();
       w.boatU = Math.random();
       g.add(w.boat);
@@ -269,7 +300,7 @@ export class Water {
     } else {
       const S = w.S = sampleCurve(w.pts, false), hw = w.width / 2;
       g.add(strip(S, -hw - 1.8, hw + 1.8, SAND_Y, MAT.sand, .1));
-      g.add(strip(S, -hw, hw, WATER_Y, MAT.river, .08));
+      g.add(strip(S, -hw, hw, WATER_Y - (w.id % 6) * .002, MAT.river, .08));
       S.forEach((s, k) => {
         if (k % 6 !== 3) return;
         const side = Math.random() < .5 ? -1 : 1;
@@ -324,6 +355,37 @@ export class Water {
     }
   }
 
+  ripple(x, z) {
+    this.ripples ||= [];
+    let r = this.ripples.find(q => !q.visible);
+    if (!r) {
+      if (this.ripples.length > 40) return;
+      r = new THREE.Mesh(new THREE.RingGeometry(.75, .9, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false }));
+      this.game.scene.add(r);
+      this.ripples.push(r);
+    }
+    r.visible = true;
+    r.userData.t = 0;
+    r.position.set(x, WATER_Y + .03, z);
+  }
+
+  // drawing a new river: a point near other water snaps onto it (so they join into one)
+  snapPoint(x, z, r = 7) {
+    let best = null, bd = r;
+    for (const w of this.list) {
+      if (w.kind === 'lake') {
+        w.poly.forEach(p => {
+          const d = Math.hypot(p.x - x, p.z - z);
+          if (d < bd) { bd = d; best = { x: p.x + (w.c.x - p.x) * .12, z: p.z + (w.c.z - p.z) * .12, join: w }; }
+        });
+      } else for (const s of w.S) {
+        const d = Math.hypot(s.x - x, s.z - z);
+        if (d < bd) { bd = d; best = { x: s.x, z: s.z, join: w }; }
+      }
+    }
+    return best;
+  }
+
   // ---------- spots for people ----------
   nearest(pos, kind) {
     let best = null, bd = Infinity;
@@ -371,25 +433,39 @@ export class Water {
     const t = this.game.time;
     for (const w of this.list) {
       if (w.kind !== 'lake') continue;
-      const L = w.loop, n = L.length;
-      const at = u => { const f = ((u % 1) + 1) % 1 * n, k = Math.floor(f), r = f - k, a = L[k], b = L[(k + 1) % n]; return { x: a.x + (b.x - a.x) * r, z: a.z + (b.z - a.z) * r }; };
+      const along = L => u => { const n = L.length, f = ((u % 1) + 1) % 1 * n, k = Math.floor(f), r = f - k, a = L[k], b = L[(k + 1) % n]; return { x: a.x + (b.x - a.x) * r, z: a.z + (b.z - a.z) * r }; };
+      const at = along(w.loop), atD = along(w.duckLoop);
       w.boatU += dt * .004;
       const p = at(w.boatU), q = at(w.boatU + .01);
       w.boat.position.set(p.x, WATER_Y + Math.sin(t * 1.6) * .05, p.z);
       w.boat.rotation.set(Math.sin(t * 1.3) * .04, Math.atan2(q.x - p.x, q.z - p.z), Math.sin(t * 1.1) * .05);
       for (const d of w.ducks) {
         d.userData.u += dt * d.userData.sp;
-        const a = at(d.userData.u + .3), b = at(d.userData.u + .305);
+        const a = atD(d.userData.u + .3), b = atD(d.userData.u + .305);
         d.position.set(a.x, WATER_Y - .05 + Math.sin(t * 3 + d.userData.u * 40) * .03, a.z);
         d.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
       }
+    }
+    // rings on the water around swimmers
+    this.rippleT = (this.rippleT || 0) - dt;
+    if (this.rippleT <= 0) {
+      this.rippleT = .35;
+      for (const ch of this.game.chars) if (ch.swimming) this.ripple(ch.root.position.x, ch.root.position.z);
+    }
+    for (const r of this.ripples || []) {
+      if (!r.visible) continue;
+      r.userData.t += dt;
+      const k = r.userData.t / 1.4;
+      if (k >= 1) { r.visible = false; continue; }
+      r.scale.setScalar(.6 + k * 2.2);
+      r.material.opacity = .5 * (1 - k);
     }
     // a fish jumps now and then
     this.splashT -= dt;
     if (this.splashT <= 0) {
       this.splashT = rand(2.5, 6);
       const w = pick(this.list);
-      const p = w.kind === 'lake' ? pick(w.loop) : pick(w.S);
+      const p = w.kind === 'lake' ? pick(w.duckLoop) : pick(w.S);
       this.game.effects.emit('splash', { x: p.x + rand(-2, 2), y: WATER_Y + .1, z: p.z + rand(-2, 2) }, 7);
     }
   }

@@ -1,6 +1,6 @@
 // Weekly town calendar: pick an event for each weekday. On that day decorations go up and residents join in.
 import * as THREE from 'three';
-import { box, cyl, ball, mesh, sphere, coneGeo, rand, pick, mergeStatic, shadows } from './util.js';
+import { box, cyl, ball, mesh, sphere, coneGeo, rand, pick, mergeStatic, shadows, flatten } from './util.js';
 import { NIGHT, addGlow } from './daynight.js';
 import { goTo, wait, say, buyActs, chatAct } from './behavior.js';
 import { t } from './i18n.js';
@@ -38,6 +38,41 @@ function balloons(p, n = 10) {
     ball(.45, pick(COLORS), x, y, z, p).scale.y = 1.2;
     cyl(.01, .01, y - .5, '#dddddd', x, (y - .5) / 2, z, p, 3);
   }
+}
+// festive days decorate the whole town: flag lines and light strings along every street, balloons at buildings
+const FESTIVE = ['festival', 'eid', 'concert', 'fireworks'];
+export const NIGHT_EVENTS = FESTIVE;   // these go on after dark (gathering + fireworks)
+function townDecor(g, key) {
+  const root = new THREE.Group(), T = g.tiles, S = 12, H = 6;
+  const lights = key === 'eid' || key === 'fireworks' || key === 'concert';
+  for (const [i, j] of T.roadList()) {
+    if (T.bridgeH(i, j) || T.rampDir(i, j)) continue;
+    const sides = [[0, 1], [0, -1], [1, 0], [-1, 0]].filter(([a, b]) => !T.isDrivable(i + a, j + b));
+    sides.forEach(([a, b], n) => {
+      if ((i + j + n) % 2) return;
+      const p = new THREE.Group();
+      p.position.set(i * S + a * (H - .5), 0, j * S + b * (H - .5));
+      p.rotation.y = a ? Math.PI / 2 : 0;
+      root.add(p);
+      for (const x of [-4.5, 4.5]) cyl(.07, .07, 4.2, '#7a5a3a', x, 2.1, 0, p, 6);
+      for (let k = 0; k <= 12; k++) {
+        const u = k / 12, x = -4.5 + 9 * u, y = 4 - Math.sin(u * Math.PI) * .7;
+        if (lights) mesh(sphere(.13), k % 3 ? NIGHT.bulb : pick(COLORS), x, y - .15, 0, p);
+        else mesh(coneGeo(.22, .42, 3), pick(COLORS), x, y - .2, 0, p).rotation.x = Math.PI;
+      }
+    });
+  }
+  // two balloons at every finished building
+  for (const b of g.town.all) {
+    if (!b.complete || b.def.open) continue;
+    const d = b.spot('door');
+    for (const s of [-1, 1]) {
+      const x = d.x + Math.cos(d.face) * s * 1.6, z = d.z - Math.sin(d.face) * s * 1.6, y = rand(3.2, 4.2);
+      ball(.42, pick(COLORS), x, y, z, root).scale.y = 1.2;
+      cyl(.012, .012, y - .4, '#dddddd', x, (y - .4) / 2, z, root, 3);
+    }
+  }
+  return root;
 }
 const DECOR = {
   festival(p) { bunting(p); balloons(p); },
@@ -166,7 +201,7 @@ export class Events {
       if (key !== this.active) this.switchTo(key);
     }
     const g = this.game;
-    if (this.active === 'fireworks' && g.daynight.night > .5) {
+    if (FESTIVE.includes(this.active) && g.daynight.night > .5) {
       this.fwTimer -= dt;
       if (this.fwTimer <= 0) {
         this.fwTimer = rand(.6, 1.6);
@@ -187,6 +222,15 @@ export class Events {
     this.decor = new THREE.Group();
     this.decor.position.set(c.x, 0, c.z);
     DECOR[key]?.(this.decor);
+    if (FESTIVE.includes(key)) {
+      // the whole town's decorations become a handful of meshes (one per colour)
+      const td = townDecor(g, key);
+      td.position.set(-c.x, 0, -c.z);
+      this.decor.add(td);
+      this.decor.updateMatrixWorld(true);
+      flatten(td);
+      mergeStatic(td);
+    }
     mergeStatic(this.decor);
     shadows(this.decor);
     g.scene.add(this.decor);
@@ -201,7 +245,10 @@ export class Events {
   routineFor(c) {
     const key = this.active;
     if (!key || !ROUTINES[key]) return null;
-    if (key === 'fireworks' && this.game.daynight.night < .5 && Math.random() < .7) return null;
+    const night = this.game.daynight.night > .5;
+    if (key === 'fireworks' && !night && Math.random() < .7) return null;
+    // a festive night: almost everybody comes to the square to watch the fireworks
+    if (night && FESTIVE.includes(key)) return Math.random() < .85 ? ROUTINES.fireworks(c, this.game, this.center()) : null;
     if (Math.random() > (c.job !== 'none' ? .35 : .7)) return null;
     return ROUTINES[key](c, this.game, this.center());
   }

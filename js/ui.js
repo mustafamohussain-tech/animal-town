@@ -13,7 +13,7 @@ import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, set
 
 const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['boat', '🚣'], ['drive', '🚕'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
-const TOOL_LIST = [['road', '🛣️'], ['dirt', '🟫'], ['path', '👣'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
+const TOOL_LIST = [['road', '🛣️'], ['dirt', '🟫'], ['path', '👣'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['gardenlamp', '🏮'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);
@@ -687,7 +687,7 @@ export class UI {
       grid.appendChild(tile(e, t('tool_' + k), () => this.game.editor.setTool(g.tool === k ? null : k), g.tool === k ? 'on' : ''));
     }
     const tool = g.tool;
-    $('tool-hint').textContent = !tool ? '' : (tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool))) + ' ' + t('rcCancel');
+    $('tool-hint').textContent = !tool ? '' : (tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'gardenlamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool))) + ' ' + t('rcCancel');
     $('tool-done').style.display = tool ? '' : 'none';
     // river width
     const ex = $('tool-extra');
@@ -902,7 +902,20 @@ export class UI {
       const hrow = el('label', 'fld wide');
       const hs = el('select');
       const first = el('option', null, '➕ ' + t('hire')); first.value = ''; hs.appendChild(first);
-      for (const ch of [...g.chars].filter(x => !staff.includes(x)).sort((a, z) => a.name.localeCompare(z.name))) { const o = el('option', null, ch.name); o.value = ch.id; hs.appendChild(o); }
+      // each name shows what they do now; people without a job come first
+      const jobOf = ch => {
+        if (ch.job === 'none') return t('job_none');
+        const wp = g.town.get(ch.workplaceId);
+        return `${JOBS[ch.job].emoji} ${t('job_' + ch.job)}${wp ? ' · ' + wp.displayName() : ''}`;
+      };
+      const free = [...g.chars].filter(x => !staff.includes(x)).sort((a, z) => (a.job !== 'none') - (z.job !== 'none') || a.name.localeCompare(z.name));
+      for (const [label, list] of [[t('hireFree'), free.filter(x => x.job === 'none')], [t('hireBusy'), free.filter(x => x.job !== 'none')]]) {
+        if (!list.length) continue;
+        const grp = document.createElement('optgroup');
+        grp.label = label;
+        for (const ch of list) { const o = el('option', null, `${ch.name} — ${jobOf(ch)}`); o.value = ch.id; grp.appendChild(o); }
+        hs.appendChild(grp);
+      }
       hs.onchange = () => { const ch = g.getChar(+hs.value); if (ch) { g.hire(ch, b); this.renderSelected(true); } };
       hrow.append(el('span', null, '🤝 ' + t('hire')), hs);
       card.appendChild(hrow);

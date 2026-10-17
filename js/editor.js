@@ -136,7 +136,9 @@ export class Editor {
     if (!p) return;
     const t = this.tool, g = this.game;
     if (this.pathTool) {
-      const q = this.waterTool || t === 'path' ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
+      let q = this.waterTool || t === 'path' ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
+      // rivers join other rivers and lakes they touch
+      if (t === 'river') q = g.water.snapPoint(p.x, p.z) || q;
       // points outside the town land are pulled back to its edge (not dropped)
       if (this.waterTool) { const h = g.world.landHalf - 1; q.x = Math.max(-h, Math.min(h, q.x)); q.z = Math.max(-h, Math.min(h, q.z)); }
       this.pts.push(q);
@@ -229,7 +231,7 @@ export class Editor {
 
     if (type === 'lamp' || type === 'bench' || type === 'busstop') {
       const off = type === 'lamp' ? .6 : .9;
-      let best = null, bd = T.onAsphalt(p.x, p.z) ? 9 : type === 'busstop' ? 7 : 3.5;
+      let best = null, bd = T.onAsphalt(p.x, p.z) ? 9 : type === 'bench' ? 3.5 : 7;
       for (let a = i - 2; a <= i + 2; a++) for (let b = j - 2; b <= j + 2; b++) {
         if (!T.isRoad(a, b)) continue;
         for (const [di, dj] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
@@ -243,8 +245,9 @@ export class Editor {
         }
       }
       if (best) return best;
+      if (type === 'lamp') return bad(t('lampRoadside'));            // street lamps only beside roads
       if (type === 'busstop' || T.onAsphalt(p.x, p.z)) return bad(t('propRoadside'));
-      return busy(p.x, p.z) ? bad('') : free;   // a lamp or bench in a park is fine
+      return busy(p.x, p.z) ? bad('') : free;   // a bench in a park is fine
     }
 
     if (T.onAsphalt(p.x, p.z)) return bad(t('propOffRoad'));
@@ -371,7 +374,9 @@ export class Editor {
     const pts = this.pts.filter((q, k, a) => k === 0 || Math.hypot(q.x - a[k - 1].x, q.z - a[k - 1].z) > 1);
     if (this.waterTool) {
       if (pts.length >= (tool === 'lake' ? 3 : 2)) {
-        const d = { kind: tool, pts, width: this.riverWidth };
+        // a river that starts at other water flows away from it... unless only its start touches: then it flows into it
+        if (tool === 'river' && this.pts[0]?.join && !this.pts.at(-1)?.join) pts.reverse();
+        const d = { kind: tool, pts: pts.map(q => ({ x: q.x, z: q.z })), width: this.riverWidth };
         const w = g.water.add(d);
         // water may not cover buildings
         // only refused when the water really covers a building (passing close by is fine);

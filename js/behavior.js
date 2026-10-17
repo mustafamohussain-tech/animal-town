@@ -1,6 +1,7 @@
 // What characters do: small "activities" (walk, wait, build…) chained into routines.
 // An activity is { name, start(c), update(c,dt,t) -> true when done, end(c) }.
 import { swimwear } from './clothes.js';
+import { NIGHT_EVENTS } from './events.js';
 import { makeRideBoat, WATER_Y } from './water.js';
 import * as THREE from 'three';
 import { rand, pick, angleTo, dist2d } from './util.js';
@@ -331,15 +332,15 @@ function boatAct(w, dock, sec) {
       c.pose = 'row';
       c.say('🚣', 2);
       let bd = Infinity;
-      w.loop.forEach((q, i) => { const d = Math.hypot(q.x - from.x, q.z - from.z); if (d < bd) { bd = d; k = i; } });
+      w.rideLoop.forEach((q, i) => { const d = Math.hypot(q.x - from.x, q.z - from.z); if (d < bd) { bd = d; k = i; } });
       c.game.effects.emit('splash', { x: from.x, y: .2, z: from.z }, 8);
     },
     update(c, dt, t) {
       left -= dt;
       if (left <= 0) back = true;
-      const tg = back ? from : w.loop[k], p = boat.position;
+      const tg = back ? from : w.rideLoop[k], p = boat.position;
       const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.hypot(dx, dz);
-      if (d < .9) { if (back) return true; k = (k + 1) % w.loop.length; return false; }
+      if (d < .9) { if (back) return true; k = (k + 1) % w.rideLoop.length; return false; }
       const want = Math.atan2(dx, dz);
       let da = want - boat.rotation.y;
       da = Math.atan2(Math.sin(da), Math.cos(da));
@@ -380,20 +381,27 @@ function swimAct(w, sh, sec) {
       c.say('🏊', 2);
       const p = c.root.position;
       let bd = Infinity;
-      w.loop.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd) { bd = d; k = i; } });
+      w.swimLoop.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd) { bd = d; k = i; } });
       c.game.effects.emit('splash', { x: p.x, y: .2, z: p.z }, 10);
     },
     update(c, dt) {
       left -= dt;
       if (left <= 0) back = true;
-      const tg = back ? sh : w.loop[k], p = c.root.position;
+      const tg = back ? sh : w.swimLoop[k], p = c.root.position;
       const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.hypot(dx, dz);
-      if (d < .6) { if (back) return true; k = (k + 1) % w.loop.length; return false; }
-      const s = Math.min(d, 1.7 * dt);
+      if (d < .6) { if (back) return true; k = (k + 1) % w.swimLoop.length; return false; }
+      // someone swimming right in front: slow down instead of swimming through them
+      let sp = 1.6;
+      for (const o of c.game.chars) {
+        if (o === c || !o.swimming) continue;
+        const ox = o.root.position.x - p.x, oz = o.root.position.z - p.z, od = Math.hypot(ox, oz);
+        if (od < 1.8 && (ox * dx + oz * dz) > 0) sp = .3;
+      }
+      const s = Math.min(d, sp * dt);
       p.x += dx / d * s;
       p.z += dz / d * s;
       c.faceAngle = Math.atan2(dx, dz);
-      if (Math.random() < dt * 1.5) c.game.effects.emit('splash', { x: p.x, y: .15, z: p.z }, 3);
+      if (Math.random() < dt * 2.2) c.game.effects.emit('splash', { x: p.x + Math.sin(c.root.rotation.y) * .6, y: .15, z: p.z + Math.cos(c.root.rotation.y) * .6 }, 2);
       return false;
     },
     end(c) {
@@ -411,7 +419,8 @@ function swimAct(w, sh, sec) {
 export function brain(c) {
   const g = c.game;
   if (c.hurt) return routine(patientRoutine(c), 'patient');
-  const ev = g.events.active === 'fireworks' || !g.daynight.isNight ? g.events.routineFor(c) : null;
+  // festive days carry on after dark: everyone gathers for the fireworks
+  const ev = NIGHT_EVENTS.includes(g.events.active) || !g.daynight.isNight ? g.events.routineFor(c) : null;
   if (ev) return routine(ev, 'event');
   if (g.nightSleep && g.daynight.isNight && !NIGHT_SHIFT.includes(c.job) && homeOf(c)) return routine(sleepActs(c, true), 'sleep');
   // in the daytime, people work on the building they are building for themselves

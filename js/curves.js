@@ -4,7 +4,7 @@ import { TILE } from './path.js';
 import { box, cyl, mat, sideMat, mergeStatic, shadows, dist2d } from './util.js';
 import { tileOf } from './tiles.js';
 
-const ROAD_W = 9, WALK_W = 1.5, BRIDGE_H = 7.5, RAMP = 22;
+const ROAD_W = 7, WALK_W = 2.4, BRIDGE_H = 7.5, RAMP = 22;
 const smooth = x => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
 // a flat ribbon following the samples, offset sideways from a..b, at height y(k)

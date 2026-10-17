@@ -13,6 +13,7 @@ export const PROP_TYPES = {
   bench: { emoji: '🪑', block: 1.2 },
   flowers: { emoji: '🌷', block: 0 },
   busstop: { emoji: '🚏', block: 1.2 },
+  gardenlamp: { emoji: '🏮', block: .3 },
 };
 const LIGHT_COLORS = ['#2ecc40', '#ffcf3f', '#ff3b30'];
 
@@ -58,6 +59,15 @@ export class Props {
       box(2.4, .12, .8, '#a0703f', 0, .6, 0, g);
       box(2.4, .7, .1, '#a0703f', 0, 1.05, -.38, g);
       for (const s of [-1, 1]) box(.1, .6, .7, '#555555', s * 1.05, .3, 0, g);
+    } else if (type === 'gardenlamp') {
+      // a short park lamp with a round globe (for parks, paths and open areas)
+      cyl(.07, .1, 2.6, '#2f3a33', 0, 1.3, 0, g, 8);
+      cyl(.18, .22, .2, '#2f3a33', 0, .1, 0, g, 8);
+      cyl(.12, .12, .12, '#2f3a33', 0, 2.65, 0, g, 8);
+      const globe = mesh(sphere(.32), NIGHT.bulb, 0, 2.95, 0, g);
+      globe.userData.keep = true;
+      addGlow(g, 0, 2.95, 0, 2, 8);
+      p.src = this.game.daynight.addSource({ pos: new THREE.Vector3(x, 2.8, z), power: 4 });
     } else if (type === 'busstop') {
       makeBusStop(this.game, g);
     } else if (type === 'flowers') {

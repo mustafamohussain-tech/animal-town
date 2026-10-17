@@ -7,8 +7,10 @@ import { box, cyl, mesh, sphere, mergeStatic, shadows } from './util.js';
 import { NIGHT, addGlow } from './daynight.js';
 
 const K = (i, j) => i + ',' + j;
-const SW = 1.8, HALF = TILE / 2;
-const ASPHALT = '#5d626b', WALK = '#cfc9bc', LINE = '#f2f2f2', DIRT = '#b08a5c', TRACK = '#9a774c';
+const LEAF = ['#4caf50', '#5cc461', '#43a047', '#66bb6a'];
+const SW = 2.6, HALF = TILE / 2;   // sidewalk width (wide enough for trees, benches and people)
+export const BRIDGE_H = 3.4;   // road bridges over water: boats and ducks pass underneath
+const ASPHALT = '#5d626b', WALK = '#cfc9bc', CURB = '#a9a294', JOINT = '#b9b2a4', LINE = '#f2f2f2', DIRT = '#b08a5c', TRACK = '#9a774c';
 export const tileOf = v => Math.round(v / TILE);
 
 export class TileMap {
@@ -17,6 +19,7 @@ export class TileMap {
     this.tiles = new Map();
     this.meshes = new Map();
     this.lampSrc = new Map();
+    this.treeRects = new Map();
   }
   get(i, j) { return this.tiles.get(K(i, j)); }
   rec(i, j) {
@@ -46,7 +49,7 @@ export class TileMap {
     const r = this.get(i, j);
     const road = !!r?.road, plot = r?.building != null, dirt = !!r?.dirt;
     const L = r?.links;
-    const N = road && (this.isRoad(i, j - 1) || L?.n > 0), S = road && (this.isRoad(i, j + 1) || L?.s > 0), E = road && (this.isRoad(i + 1, j) || L?.e > 0), W = road && (this.isRoad(i - 1, j) || L?.w > 0);
+    const N = road && (this.isDrivable(i, j - 1) || L?.n > 0), S = road && (this.isDrivable(i, j + 1) || L?.s > 0), E = road && (this.isDrivable(i + 1, j) || L?.e > 0), W = road && (this.isDrivable(i - 1, j) || L?.w > 0);
     const junction = road && N + S + E + W >= 3, band = HALF - SW - .2;
     for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
       const ci = i0 + a, cj = j0 + b;
@@ -83,6 +86,41 @@ export class TileMap {
     const walk = (!this.isRoad(a, b - 1) && lz < -band) || (!this.isRoad(a, b + 1) && lz > band) ||
       (!this.isRoad(a + 1, b) && lx > band) || (!this.isRoad(a - 1, b) && lx < -band);
     return !walk;
+  }
+  // ---------- bridges over water ----------
+  // a road tile over water is a bridge deck high above it; the road tiles leading to it are ramps
+  overWater(i, j) { return this.isRoad(i, j) && !!this.game.water?.tileWet(i, j, 0); }
+  bridgeH(i, j) {
+    if (!this.isRoad(i, j)) return 0;
+    if (this.overWater(i, j)) return BRIDGE_H;
+    const x = this.isRoad(i - 1, j) || this.isRoad(i + 1, j), z = this.isRoad(i, j - 1) || this.isRoad(i, j + 1);
+    const nextToBridge = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, c]) => this.overWater(i + a, j + c));
+    if (!nextToBridge.length) return 0;
+    // a corner or junction right next to a bridge stays up at bridge height (ramps only on straight roads)
+    if (x && z) return BRIDGE_H;
+    // squeezed between two bridges: flat on top too
+    if (nextToBridge.length >= 2) return BRIDGE_H;
+    return 0;
+  }
+  rampDir(i, j) {
+    if (!this.isRoad(i, j) || this.bridgeH(i, j)) return null;
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!this.bridgeH(i + a, j + b)) continue;
+      if (a ? (this.isRoad(i, j - 1) || this.isRoad(i, j + 1)) : (this.isRoad(i - 1, j) || this.isRoad(i + 1, j))) continue;
+      return [a, b];
+    }
+    return null;
+  }
+  // height of the ground people and cars stand on (bridges and their ramps)
+  groundY(x, z) {
+    const i = tileOf(x), j = tileOf(z);
+    if (!this.isRoad(i, j)) return 0;
+    const b = this.bridgeH(i, j);
+    if (b) return b;
+    const rd = this.rampDir(i, j);
+    if (!rd) return 0;
+    const l = rd[0] ? (x - i * TILE) * rd[0] : (z - j * TILE) * rd[1];
+    return BRIDGE_H * Math.max(0, Math.min(1, (l + HALF) / TILE));
   }
   // a crossing or T-junction (3+ roads meet)
   isJunction(i, j) {
@@ -131,6 +169,8 @@ export class TileMap {
   rebuild(i, j) {
     this.stampCost(i, j);
     const k = K(i, j);
+    const oldT = this.treeRects.get(k);   // the street tree's spot in the walk grid
+    if (oldT) { this.game.world.grid.mark(...oldT, -1); this.treeRects.delete(k); }
     const old = this.meshes.get(k);
     if (old) {
       this.game.scene.remove(old);
@@ -153,7 +193,8 @@ export class TileMap {
     }
 
     const L = this.get(i, j)?.links;
-    const n = this.isRoad(i, j - 1) || L?.n > 0, s = this.isRoad(i, j + 1) || L?.s > 0, e = this.isRoad(i + 1, j) || L?.e > 0, w = this.isRoad(i - 1, j) || L?.w > 0;
+    // a dirt road joining an asphalt road continues it (no sidewalk across the join)
+    const n = this.isDrivable(i, j - 1) || L?.n > 0, s = this.isDrivable(i, j + 1) || L?.s > 0, e = this.isDrivable(i + 1, j) || L?.e > 0, w = this.isDrivable(i - 1, j) || L?.w > 0;
     const g = new THREE.Group();
     g.position.set(i * TILE, 0, j * TILE);
     box(TILE, .06, TILE, ASPHALT, 0, .03, 0, g);
@@ -169,6 +210,39 @@ export class TileMap {
     if (n && w && !this.isRoad(i - 1, j - 1)) box(SW, .14, SW, WALK, -E, .07, -E, g);
     if (s && e && !this.isRoad(i + 1, j + 1)) box(SW, .14, SW, WALK, E, .07, E, g);
     if (s && w && !this.isRoad(i - 1, j + 1)) box(SW, .14, SW, WALK, -E, .07, E, g);
+    // sidewalk details: a curb along the road and paving joints
+    const open = [['n', !n, 0, -1], ['s', !s, 0, 1], ['e', !e, 1, 0], ['w', !w, -1, 0]].filter(q => q[1]);
+    for (const [, , a, b] of open) {
+      const cxy = HALF - SW + .12;
+      if (a) box(.24, .2, TILE, CURB, a * cxy, .1, 0, g); else box(TILE, .2, .24, CURB, 0, .1, b * cxy, g);
+      for (let u = -HALF + 1.5; u < HALF; u += 1.5) {
+        if (a) box(SW - .3, .01, .05, JOINT, a * E, .145, u, g); else box(.05, .01, SW - .3, JOINT, u, .145, b * E, g);
+      }
+    }
+    // street trees in little soil squares on every other tile (lamps stand on the others)
+    if (((i + j) & 1) === 1 && open.length && !this.overWater(i, j) && !this.rampDir(i, j) && !this.bridgeH(i, j)) {
+      const [, , a, b] = open[(i * 7 + j * 3 & 255) % open.length];
+      const tx = a ? a * E : 2.5, tz = a ? 2.5 : b * E;
+      box(1.3, .03, 1.3, '#6b5a3e', tx, .15, tz, g);
+      cyl(.12, .16, 2.2, '#8b5a2b', tx, 1.2, tz, g, 7);
+      mesh(new THREE.IcosahedronGeometry(1.25, 0), LEAF[(i * 3 + j) & 3], tx, 3, tz, g).userData.ownGeo = true;
+      mesh(new THREE.IcosahedronGeometry(.85, 0), LEAF[(i + j * 5) & 3], tx + .3, 3.9, tz - .2, g).userData.ownGeo = true;
+      const wx = i * TILE + tx, wz = j * TILE + tz, rect = [wx - .5, wz - .5, wx + .5, wz + .5];
+      this.game.world.grid.mark(...rect, 1);
+      this.treeRects.set(k, rect);
+    }
+    // now and then a bench or a bin on the sidewalk
+    if (open.length && (i * 5 + j * 11 & 255) % 7 === 0 && !this.bridgeH(i, j) && !this.rampDir(i, j)) {
+      const [, , a, b] = open[0], bx = a ? a * (HALF - .6) : -2.5, bz = a ? -2.5 : b * (HALF - .6);
+      const bench = new THREE.Group();
+      bench.position.set(bx, .14, bz);
+      bench.rotation.y = Math.atan2(-a, -b);
+      box(2, .1, .6, '#a0703f', 0, .5, 0, bench);
+      box(2, .5, .08, '#a0703f', 0, .85, -.28, bench);
+      for (const sx of [-.85, .85]) box(.08, .5, .5, '#555555', sx, .25, 0, bench);
+      g.add(bench);
+      cyl(.28, .24, .8, '#4a6b4a', a ? a * (HALF - .5) : 1.5, .54, a ? 1.5 : b * (HALF - .5), g, 10);
+    }
 
     // markings (none on wide areas: roads drawn side by side form a square, not crossings)
     const R = (a, c) => this.isRoad(a, c);
@@ -220,8 +294,9 @@ export class TileMap {
       if (!e) rail(false, R);
       if (!w) rail(false, -R);
     }
-    // a street lamp on every other tile, standing on a sidewalk
-    if (((i + j) & 1) === 0) {
+    const bh = this.bridgeH(i, j), rd = !bh && this.rampDir(i, j);
+    // a street lamp on every other tile, standing on a sidewalk (not on a sloping ramp)
+    if (((i + j) & 1) === 0 && !rd) {
       const side = !s ? 's' : !n ? 'n' : !e ? 'e' : !w ? 'w' : null;
       if (side) {
         const off = HALF - .6;
@@ -234,13 +309,42 @@ export class TileMap {
         const bulb = mesh(sphere(.18), NIGHT.bulb, bx, 4.55, bz, g);
         bulb.userData.keep = true;
         addGlow(g, bx, 4.5, bz, 2.6, 10);
-        this.lampSrc.set(k, this.game.daynight.addSource({ pos: new THREE.Vector3(i * TILE + bx, 4.3, j * TILE + bz), power: 6 }));
+        this.lampSrc.set(k, this.game.daynight.addSource({ pos: new THREE.Vector3(i * TILE + bx, 4.3 + bh, j * TILE + bz), power: 6 }));
       }
     }
     mergeStatic(g);
     shadows(g);
-    this.game.scene.add(g);
-    this.meshes.set(k, g);
+    let root = g;
+    if (bh || rd) {
+      // the tile is lifted (bridge) or tilted (ramp); supports are drawn in the tile's own frame
+      root = new THREE.Group();
+      root.position.copy(g.position);
+      g.position.set(0, 0, 0);
+      root.add(g);
+      const sup = new THREE.Group();
+      if (bh) {
+        g.position.y = bh;
+        box(TILE, .6, TILE, '#b8b2a5', 0, bh - .32, 0, sup);
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) cyl(.45, .6, bh, '#a8a39a', sx * (HALF - 1.6), bh / 2 - .3, sz * (HALF - 1.6), sup, 10);
+      } else {
+        const [dx, dz] = rd, ang = Math.atan2(BRIDGE_H, TILE);
+        g.position.y = BRIDGE_H / 2;
+        if (dz) { g.rotation.x = -dz * ang; g.scale.z = 1 / Math.cos(ang); }
+        else { g.rotation.z = dx * ang; g.scale.x = 1 / Math.cos(ang); }
+        // an earth wedge under the ramp
+        const sh = new THREE.Shape([new THREE.Vector2(-HALF, 0), new THREE.Vector2(HALF, 0), new THREE.Vector2(HALF, BRIDGE_H - .05)]);
+        const geo = new THREE.ExtrudeGeometry(sh, { depth: TILE - .2, bevelEnabled: false });
+        geo.translate(0, 0, -(TILE - .2) / 2);
+        geo.rotateY(dx > 0 ? 0 : dx < 0 ? Math.PI : dz > 0 ? -Math.PI / 2 : Math.PI / 2);
+        const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#b8b2a5', roughness: 1 }));
+        m.userData.ownGeo = true;
+        sup.add(m);
+      }
+      shadows(sup);
+      root.add(sup);
+    }
+    this.game.scene.add(root);
+    this.meshes.set(k, root);
   }
 
   clear() {

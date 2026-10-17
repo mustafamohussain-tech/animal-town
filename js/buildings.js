@@ -67,10 +67,11 @@ export const TYPES = {
   },
   farm: { emoji: '🌾', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 14, job: 'farmer', signBg: '#8a5a2b', styles: { farm: {} } },
   dock: { emoji: '🎣', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 14, job: 'fisher', canBurn: false, signBg: '#1f6f9f', styles: { pond: {} } },
+  garage: { emoji: '🅿️', open: true, tiles: [1, 1], floors: [1, 1, 1], time: 8, canBurn: false, signBg: '#2f6f9f', styles: { lot: {} } },
   park: { emoji: '🌳', open: true, tiles: [1, 1], floors: [1, 1, 1], time: 10, canBurn: false, signBg: '#2e7d32', styles: { small: {}, big: { tiles: [2, 2] } } },
   custom: { emoji: '🏗️', role: 'office', tiles: [1, 1], floors: [1, 20, 3], time: 12, styles: { custom: {} } },
 };
-export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'park'];
+export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'park', 'garage'];
 
 // turn a type + choices into a full design ("spec") with colours picked
 export function makeSpec(type, o = {}) {
@@ -208,6 +209,27 @@ const OPEN = {
     b.points.pond = [0, .2, cz];
     b.pondR = R;
   },
+  // a car park: six bays, the back row under a roof, a lane in the middle
+  garage(b) {
+    const { W, D } = b, base = b.base();
+    box(W, .07, D, '#5d626b', 0, .035, 0, base);
+    const pc = b.piece(0, 0);
+    b.parkSpots = [];
+    for (const row of [-1, 1]) {
+      const z = row * (D / 2 - 2.5);
+      for (let k = -1; k <= 1; k++) {
+        b.parkSpots.push([k * 3.2, z, row < 0 ? 0 : Math.PI]);
+        box(.1, .01, 4.4, '#ffffff', k * 3.2 - 1.6, .075, z, pc);
+      }
+      box(.1, .01, 4.4, '#ffffff', 3.2 + 1.6, .075, z, pc);
+    }
+    for (const x of [-W / 2 + .3, 0, W / 2 - .3]) cyl(.12, .12, 2.8, '#9aa0a8', x, 1.4, -D / 2 + .4, pc, 8);
+    box(W, .15, 5.2, '#6e737c', 0, 2.85, -D / 2 + 2.6, pc);
+    cyl(.07, .07, 3, '#3a3f48', W / 2 - .4, 1.5, D / 2 - .4, pc, 6);
+    box(.9, .9, .1, '#2f6f9f', W / 2 - .4, 3.2, D / 2 - .4, pc);
+    box(.5, .55, .02, '#ffffff', W / 2 - .4, 3.2, D / 2 - .34, pc);
+    b.spots.door = [[0, D / 2 + 1, Math.PI, 'stand', 0, 0]];
+  },
   park(b) {
     const { W, D } = b, big = W > 14;
     const base = b.base();
@@ -334,14 +356,18 @@ export class Building {
     this.tiles = fp.list;
     this.W = this.spec.tiles[0] * TILE - 1.6;
     this.D = this.spec.tiles[1] * TILE - 1.6;
-    this.cx = (d.i + (fp.rw - 1) / 2) * TILE;
-    this.cz = (d.j + (fp.rd - 1) / 2) * TILE;
+    const tcx = (d.i + (fp.rw - 1) / 2) * TILE, tcz = (d.j + (fp.rd - 1) / 2) * TILE;
     this.angle = this.rot * Math.PI / 2;
     this.cos = Math.cos(this.angle);
     this.sin = Math.sin(this.angle);
+    // houses leave a strip on one side for the driveway and a carport
+    this.yard = this.type === 'house' ? 3.8 : 0;
+    this.W -= this.yard;
+    this.cx = tcx + this.cos * this.yard / 2;
+    this.cz = tcz - this.sin * this.yard / 2;
     this.center = { x: this.cx, z: this.cz };
     for (const [a, c] of this.tiles) game.tiles.claim(a, c, this.id);
-    game.props.clearRect(this.cx - fp.rw * TILE / 2, this.cz - fp.rd * TILE / 2, this.cx + fp.rw * TILE / 2, this.cz + fp.rd * TILE / 2);
+    game.props.clearRect(tcx - fp.rw * TILE / 2, tcz - fp.rd * TILE / 2, tcx + fp.rw * TILE / 2, tcz + fp.rd * TILE / 2);
 
     this.group = new THREE.Group();
     this.group.position.set(this.cx, 0, this.cz);
@@ -351,6 +377,7 @@ export class Building {
 
     if (this.def.open) OPEN[this.type](this);
     else buildShell(this, { ...this.spec, signBg: this.def.signBg }, this.W, this.D);
+    if (this.yard) this.buildCarport();
     if (this.crops && d.crops) d.crops.forEach((g, k) => { const c = this.crops[k]; if (c) { c.grow = g; c.g.scale.setScalar(1.7 * (.25 + .75 * g)); } });
     this.group.updateMatrixWorld(true);
     for (const p of this.pieces) { flatten(p); mergeStatic(p); }
@@ -381,6 +408,19 @@ export class Building {
     g.scale.setScalar(s);
     parent.add(g);
     return g;
+  }
+
+  // the driveway (from the street to the back of the plot) with a carport for the family car
+  buildCarport() {
+    const x = -this.W / 2 - this.yard / 2, half = TILE / 2, cz = this.D / 2;
+    const base = this.base();
+    box(this.yard - .3, .07, TILE - .2, '#b9b4aa', x, .035, (half - cz) / 2 - .05 + (cz - half) / 2, base);
+    for (let z = -half + 1.2; z < half; z += 2.4) box(this.yard - .5, .01, .06, '#a8a296', x, .075, z, base);
+    const pc = this.piece(x, 0);
+    for (const sx of [-1, 1]) for (const z of [-3.6, 1.6]) box(.16, 2.6, .16, '#f4f1ea', sx * (this.yard / 2 - .35), 1.3, z, pc);
+    box(this.yard + .1, .14, 6.2, '#6e737c', 0, 2.66, -1, pc);
+    box(this.yard + .3, .1, .2, '#f4f1ea', 0, 2.56, 2.1, pc);
+    this.parkSpots = [[x, -1.2], [x, 3.6]];   // under the roof, then on the driveway
   }
 
   // ----- helpers used by the generators -----
