@@ -31,6 +31,7 @@ export function serialize(game) {
     hour: +game.daynight.hour.toFixed(3),
     clockOffset: game.daynight.offset,
     cycleMs: game.daynight.cycleMs,
+    realClock: game.daynight.real,
     buildDuration: game.buildDuration,
     paused: game.daynight.paused,
     roads: game.tiles.roadList(),
@@ -38,6 +39,7 @@ export function serialize(game) {
     water: game.water.toJSON(),
     dirt: game.tiles.dirtList(),
     paths: game.paths.toJSON(),
+    parks: game.parks.toJSON(),
     props: game.props.toJSON(),
     buildings: game.town.all.map(b => b.toJSON()),
     chars: game.chars.map(c => c.toJSON()),
@@ -53,7 +55,7 @@ export function saveGame(game) {
 
 export function loadData(game, data, { keepLang = false } = {}) {
   if (!data || data.v !== 2) return false;
-  if (!keepLang) setLang(data.lang || 'en');
+  if (!keepLang) setLang(data.lang || 'ar');
   if (data.founded) game.founded = data.founded;
   for (const k of ['followNew', 'nightSleep', 'choosePlace', 'showCard']) if (typeof data[k] === 'boolean') game[k] = data[k];
   if (data.screenMode) game.screenMode = data.screenMode;
@@ -63,8 +65,12 @@ export function loadData(game, data, { keepLang = false } = {}) {
   if (typeof data.buildDuration === 'number') game.buildDuration = data.buildDuration;
   const dn = game.daynight;
   if (typeof data.cycleMs === 'number') dn.cycleMs = data.cycleMs;
+  // older towns move to the real 24-hour clock once; after that the choice is kept
+  dn.real = data.realClock ?? true;
+  if (dn.real) dn.cycleMs = 24 * 3600000;
   dn.paused = !!data.paused;
   if (dn.paused && typeof data.hour === 'number') dn.hour = data.hour;
+  else if (dn.real) dn.hour = dn.clockHour();
   else if (typeof data.clockOffset === 'number') { dn.offset = data.clockOffset; dn.hour = dn.clockHour(); }
   else if (typeof data.hour === 'number') dn.setHour(data.hour);
   const safe = (what, fn) => { try { fn(); } catch (e) { console.warn('skip', what, e); } };
@@ -72,6 +78,7 @@ export function loadData(game, data, { keepLang = false } = {}) {
   for (const c of data.curves || []) safe('curve', () => game.curves.add(c.pts, c.bridge, { id: c.id, links: c.links }));
   for (const [i, j] of data.dirt || []) safe('dirt', () => game.tiles.setDirt(i, j, true));
   for (const p of data.paths || []) safe('path', () => game.paths.add(p.pts, { id: p.id }));
+  for (const p of data.parks || []) safe('park', () => game.parks.add(p.pts, { id: p.id, made: p.made }));
   for (const w of data.water || []) safe('water', () => game.water.add(w, { id: w.id }));
   for (const b of data.buildings || []) {
     safe('building', () => game.town.create(b.spec, b.i, b.j, b.rot, { id: b.id, progress: b.progress, startedAt: b.startedAt, duration: b.duration, ownerId: b.ownerId, builtBy: b.builtBy, residents: b.residents, crops: b.crops }));

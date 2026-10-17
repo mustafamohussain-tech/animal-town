@@ -7,6 +7,7 @@ import { tileOf } from './tiles.js';
 import { buildCurveMesh } from './curves.js';
 import { previewWater, RIVER_W } from './water.js';
 import { buildPathMesh } from './paths.js';
+import { previewPark } from './parks.js';
 import { PROP_TYPES } from './props.js';
 import { t, t as i18n } from './i18n.js';
 import { canPlace, roadInFront, footprint, makeGhostModel, GHOST_OK, GHOST_BAD } from './buildings.js';
@@ -76,7 +77,7 @@ export class Editor {
     this.game.log(i18n(wasPlace ? 'placeCancelled' : 'toolOff'));
   }
   // tools drawn with points: curved road, bridge, river, lake
-  get pathTool() { return ['curve', 'bridge', 'river', 'lake', 'path'].includes(this.tool); }
+  get pathTool() { return ['curve', 'bridge', 'river', 'lake', 'path', 'parkzone'].includes(this.tool); }
   get waterTool() { return this.tool === 'river' || this.tool === 'lake'; }
   setTool(tool, opts = {}) {
     this.clearPreview();
@@ -136,7 +137,7 @@ export class Editor {
     if (!p) return;
     const t = this.tool, g = this.game;
     if (this.pathTool) {
-      let q = this.waterTool || t === 'path' ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
+      let q = this.waterTool || t === 'path' || t === 'parkzone' ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
       // rivers join other rivers and lakes they touch
       if (t === 'river') q = g.water.snapPoint(p.x, p.z) || q;
       // points outside the town land are pulled back to its edge (not dropped)
@@ -275,7 +276,7 @@ export class Editor {
       m.visible = !!tl;
       if (!tl) return;
       const [i, j] = tl, rec = g.tiles.get(i, j);
-      const ok = this.tool === 'erase' || (g.world.inLand(i, j) && !(rec && rec.building != null));
+      const ok = this.tool === 'erase' || (g.world.inLand(i, j) && !(rec && (rec.building != null || rec.curve > 0)));
       m.position.set(i * TILE, .26, j * TILE);
       m.material.color.set(this.tool === 'erase' ? '#ff3b30' : ok ? '#4cd964' : '#ff3b30');
     });
@@ -311,11 +312,17 @@ export class Editor {
           g.history.push(i18n('tool_' + wt.kind), () => { ref = g.water.add(d, { id: ref.id }); }, () => g.water.remove(ref));
         } else {
           const pr = g.props.nearest(p.x, p.z, 2.5);
+          const pk = !pr && g.parks.at(p.x, p.z);
           if (pr) {
             const o = { ...pr };
             let ref = pr;
             g.props.remove(pr);
             g.history.push(i18n('tool_' + o.type), () => { ref = g.props.add(o.type, o.x, o.z, o.rot, { id: o.id, natural: o.natural, scale: o.scale }); }, () => g.props.remove(ref));
+          } else if (pk) {
+            // the park's lawn goes; its trees, benches and paths stay (erase them one by one if you want)
+            let ref = pk;
+            g.parks.remove(pk);
+            g.history.push(i18n('tool_parkzone'), () => { ref = g.parks.add(ref.pts, { id: ref.id, made: ref.made }); }, () => g.parks.remove(ref));
           }
         }
       }
@@ -368,8 +375,8 @@ export class Editor {
   updateCurve(p) {
     if (this.curvePreview) this.game.scene.remove(this.curvePreview);
     const pts = [...this.pts];
-    if (p) pts.push(this.waterTool ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p));
-    this.curvePreview = this.waterTool ? previewWater(this.tool, pts, this.riverWidth) : this.tool === 'path' ? buildPathMesh(pts, true) : buildCurveMesh(pts, this.tool === 'bridge', true);
+    if (p) pts.push(this.waterTool || this.tool === 'path' || this.tool === 'parkzone' ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p));
+    this.curvePreview = this.waterTool ? previewWater(this.tool, pts, this.riverWidth) : this.tool === 'path' ? buildPathMesh(pts, true) : this.tool === 'parkzone' ? previewPark(pts) : buildCurveMesh(pts, this.tool === 'bridge', true);
     this.game.scene.add(this.curvePreview);
   }
   finishCurve() {
@@ -397,6 +404,14 @@ export class Editor {
           g.emit('change');
         }
       } else { g.emit('toolmsg', i18n(tool === 'lake' ? 'needLakePts' : 'needRiverPts')); return; }
+    } else if (tool === 'parkzone') {
+      if (pts.length < 3) { g.emit('toolmsg', i18n('needLakePts')); return; }
+      let ref = g.parks.add(pts, { plant: true });
+      // a park can't cover buildings
+      const hit = [...g.tiles.tiles.entries()].find(([k, r]) => r.building != null && g.parks.tileIn(...k.split(',').map(Number)));
+      if (hit) { g.parks.remove(ref, true); const b = g.town.get(hit[1].building); g.emit('toolmsg', i18n('parkOnBuilding', { b: b ? b.displayName() : '' })); return; }
+      g.history.push(i18n('tool_parkzone'), () => g.parks.remove(ref, true), () => { ref = g.parks.add(ref.pts, { plant: true }); });
+      g.emit('change');
     } else if (tool === 'path' && pts.length >= 2) {
       let ref = g.paths.add(pts);
       g.history.push(i18n('tool_path'), () => g.paths.remove(ref), () => { ref = g.paths.add(ref.pts, { id: ref.id }); });

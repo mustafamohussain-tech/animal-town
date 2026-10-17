@@ -13,6 +13,7 @@ import { BusService } from './bus.js';
 import { Water } from './water.js';
 import { History } from './history.js';
 import { Paths } from './paths.js';
+import { Parks } from './parks.js';
 import { Traffic } from './traffic.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
@@ -39,6 +40,7 @@ export class Game {
     this.curves = new Curves(this);
     this.water = new Water(this);
     this.paths = new Paths(this);
+    this.parks = new Parks(this);
     this.traffic = new Traffic(this);
     this.history = new History(this);
     this.vehicles = new Vehicles(this);
@@ -285,7 +287,19 @@ export class Game {
   }
 
   // spec = a design (makeSpec / custom). ask = let the player choose the spot with the ghost.
+  // "build a park": a natural park (drawn shape, plants itself) around a free spot
+  makeParkNear(near) {
+    const s = autoPlace(this, makeSpec('park'));
+    if (!s) return this.log(t('noSpace'));
+    const cx = s.i * 12, cz = s.j * 12, pts = [];
+    for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2, r = 11 + Math.random() * 4; pts.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r }); }
+    let ref = this.parks.add(pts, { plant: true });
+    this.history.push(t('tool_parkzone'), () => this.parks.remove(ref, true), () => { ref = this.parks.add(pts, { plant: true }); });
+    this.emit('change');
+    return this.announce(t('parkMade'));
+  }
   orderBuild(c, spec, owner, ask = false) {
+    if (spec.type === 'park') return this.makeParkNear(c?.root.position);
     c ||= this.pickBuilder();
     if (!c) return this.log(t('notFound'));
     if (ask || this.choosePlace) {

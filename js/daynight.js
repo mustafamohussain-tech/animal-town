@@ -54,7 +54,8 @@ export class DayNight {
     this.world = world;
     // The clock follows real time: by default a full day+night takes 12 real hours
     // (6 hours of daylight, 6 hours of night), and it keeps going while the game is closed.
-    this.cycleMs = 12 * 3600000;
+    this.cycleMs = 24 * 3600000;
+    this.real = true;   // the town's clock follows the local time of day
     this.paused = false;
     this.offset = 0;
     this.setHour(9);
@@ -90,14 +91,19 @@ export class DayNight {
     this.apply();
   }
 
-  clockHour() { return ((Date.now() / this.cycleMs * 24 + this.offset) % 24 + 24) % 24; }
+  clockHour() {
+    if (this.real) { const d = new Date(); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; }
+    return ((Date.now() / this.cycleMs * 24 + this.offset) % 24 + 24) % 24;
+  }
+  setReal() { this.real = true; this.cycleMs = 24 * 3600000; this.paused = false; this.hour = this.clockHour(); if (this.moon) this.apply(); }
   setHour(h) {
+    this.real = false;   // picking an hour by hand leaves real time (the "real time" option brings it back)
     this.hour = ((h % 24) + 24) % 24;
     this.offset = ((this.hour - Date.now() / this.cycleMs * 24) % 24 + 24) % 24;
     if (this.moon) this.apply();
   }
   setPaused(p) { this.paused = p; if (!p) this.setHour(this.hour); }
-  setCycle(ms) { const h = this.hour; this.cycleMs = ms; this.setHour(h); }
+  setCycle(ms) { const h = this.hour; this.cycleMs = ms; this.setHour(h); this.real = false; }
   get clockText() {
     const h = Math.floor(this.hour), m = Math.floor((this.hour - h) * 60);
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;

@@ -1,11 +1,7 @@
-// Background music made live in the browser (no files needed): soft chords, bass, a gentle melody and light drums.
-// At night it becomes slower and calmer. You can also play your own music file instead.
+// Background music made live in the browser (no files needed): calm, ever-changing piano pieces with nature
+// sounds in between (birds by day, crickets at night). You can also play your own music file instead.
 const mtof = m => 440 * 2 ** ((m - 69) / 12);
 
-// chords as MIDI notes, one chord per bar
-const DAY = { bpm: 86, chords: [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65]], drums: true };   // Cmaj7 Am7 Fmaj7 G7
-const NIGHT = { bpm: 66, chords: [[57, 60, 64, 67], [53, 57, 60, 64], [48, 52, 55, 59], [52, 55, 59, 62]], drums: false }; // Am7 Fmaj7 Cmaj7 Em7
-const SCALE = [0, 2, 4, 7, 9]; // pentatonic
 
 export class Music {
   constructor() {
@@ -60,7 +56,7 @@ export class Music {
     this.ctx.resume();
     if (this.timer) return;
     this.next = this.ctx.currentTime + .1;
-    this.timer = setInterval(() => this.schedule(), 25);
+    this.timer = setInterval(() => this.schedule(), 40);
   }
   stop() {
     this.on = false;
@@ -102,84 +98,164 @@ export class Music {
     if (wasOn) this.start();
   }
 
-  // ---------- the little sequencer ----------
+  // ---------- calm generative music (in the spirit of Minecraft's soundtrack) ----------
+  // Every piece is new: its own key, chords and tempo, a soft improvised piano over slow chords with a long echo.
+  // After 2–3 minutes there is a quiet break with only nature sounds, then another piece.
   schedule() {
-    const ctx = this.ctx;
-    while (this.next < ctx.currentTime + .15) {
-      this.playStep(this.step, this.next);
-      const song = this.night ? NIGHT : DAY;
-      this.next += 60 / song.bpm / 2; // eighth notes
-      this.step++;
-    }
-  }
-
-  tone(freq, t, dur, { type = 'sine', gain = .1, attack = .01, cutoff = 0, detune = 0 } = {}) {
-    const ctx = this.ctx;
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    o.detune.value = detune;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(gain, t + attack);
-    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-    let node = o.connect(g);
-    if (cutoff) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; node = g.connect(f); }
-    node.connect(this.dry);
-    o.start(t);
-    o.stop(t + dur + .05);
-  }
-
-  playStep(step, t) {
-    const song = this.night ? NIGHT : DAY;
-    const beat = 60 / song.bpm, bar = Math.floor(step / 8) % song.chords.length, s = step % 8;
-    const chord = song.chords[bar];
-    const soft = this.night ? .6 : 1;
-    // pad: the whole chord, held for the bar
-    if (s === 0) {
-      for (const n of chord) {
-        this.tone(mtof(n), t, beat * 4.2, { type: 'triangle', gain: .035 * soft, attack: .6, cutoff: 1100, detune: -6 });
-        this.tone(mtof(n), t, beat * 4.2, { type: 'sine', gain: .03 * soft, attack: .6, detune: 6 });
+    const ctx = this.ctx, now = ctx.currentTime;
+    this.ambience(now);
+    if (!this.next || this.next < now) this.next = now + .1;
+    while (this.next < now + .25) {
+      if (!this.piece || this.piece.left <= 0) {
+        if (this.piece && !this.restUntil) this.restUntil = this.next + 22 + Math.random() * 30;   // a quiet break
+        if (this.restUntil && this.next < this.restUntil) { this.next = Math.min(this.restUntil, now + .25); if (this.next < this.restUntil) return; }
+        this.restUntil = 0;
+        this.newPiece();
       }
-    }
-    // bass on beats 1 and 3
-    if (s === 0 || (s === 4 && !this.night)) this.tone(mtof(chord[0] - 12), t, beat * 1.8, { type: 'sine', gain: .12 * soft, attack: .02 });
-    // plucked arpeggio
-    const arp = [0, 1, 2, 3, 2, 1, 2, 3];
-    if (!this.night || s % 2 === 0) {
-      if (Math.random() > .18) this.tone(mtof(chord[arp[s]] + 12), t, .45, { type: 'triangle', gain: .045 * soft, cutoff: 2400 });
-    }
-    // a gentle melody note now and then
-    if ((s === 2 || s === 6) && Math.random() < (this.night ? .35 : .5)) {
-      const root = chord[0] + 24, n = root + SCALE[Math.floor(Math.random() * SCALE.length)];
-      this.tone(mtof(n), t, beat * 1.6, { type: 'sine', gain: .05 * soft, attack: .03 });
-      this.tone(mtof(n) * 2, t, beat * .8, { type: 'sine', gain: .012 * soft, attack: .03 });
-    }
-    // light drums (daytime only)
-    if (song.drums) {
-      if (s === 0 || s === 4) this.kick(t);
-      if (s % 2 === 1) this.hat(t, .025);
-      if (s === 4) this.hat(t, .04, 1800);
+      this.playBeat(this.next);
+      this.next += this.piece.beat;
+      this.piece.left--;
     }
   }
-  kick(t) {
+
+  newPiece() {
+    const night = this.night;
+    const MODES = night
+      ? [[0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 9, 10]]            // aeolian, dorian: softer and darker
+      : [[0, 2, 4, 5, 7, 9, 11], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 7, 9]]; // ionian, lydian, pentatonic: bright
+    const scale = MODES[Math.floor(Math.random() * MODES.length)];
+    const root = (night ? 45 : 50) + Math.floor(Math.random() * 7);   // a different key every time
+    const PROGS = night ? [[0, 5, 2, 6], [0, 3, 5, 4], [0, 6, 5, 3], [0, 5, 3, 4]] : [[0, 4, 5, 3], [0, 3, 0, 4], [0, 5, 3, 4], [3, 4, 0, 5], [0, 2, 3, 4]];
+    const prog = PROGS[Math.floor(Math.random() * PROGS.length)];
+    const beat = night ? 1.05 + Math.random() * .35 : .78 + Math.random() * .3;
+    this.piece = {
+      scale, root, prog, beat, step: 0, chordBeats: 8,
+      left: Math.round((120 + Math.random() * 70) / beat),       // about 2–3 minutes
+      density: night ? .26 : .36, last: 7 + Math.floor(Math.random() * 4),
+    };
+  }
+  // a scale degree -> MIDI note (degrees above the scale wrap into higher octaves)
+  deg(d, octave = 0) {
+    const s = this.piece.scale, n = s.length, k = ((d % n) + n) % n, o = Math.floor(d / n);
+    return this.piece.root + s[k] + 12 * (o + octave);
+  }
+  playBeat(t) {
+    const P = this.piece, soft = this.night ? .75 : 1;
+    const ci = Math.floor(P.step / P.chordBeats) % P.prog.length, inChord = P.step % P.chordBeats, deg = P.prog[ci];
+    // the chord: a low root, then the chord spread out gently (and a quiet pad under it)
+    if (inChord === 0) {
+      this.piano(mtof(this.deg(deg, -1)), t, .32 * soft, 6);
+      const voicing = [deg, deg + 2, deg + 4, deg + (Math.random() < .5 ? 6 : 8)];
+      voicing.forEach((d, i) => this.piano(mtof(this.deg(d)), t + .05 + i * (.09 + Math.random() * .08), .13 * soft, 5));
+      for (const d of [deg, deg + 4]) this.pad(mtof(this.deg(d)), t, P.beat * P.chordBeats, .022 * soft);
+    } else if (inChord === 4 && Math.random() < .5) {
+      this.piano(mtof(this.deg(deg + 4, -1)), t, .18 * soft, 4);
+    }
+    // the melody: a slow random walk over the scale, with rests; now and then two notes together
+    if (inChord && Math.random() < P.density) {
+      P.last = Math.max(4, Math.min(16, P.last + [-2, -1, -1, 1, 1, 2, 0, 3, -3][Math.floor(Math.random() * 9)]));
+      const when = t + (Math.random() < .3 ? P.beat / 2 : 0);
+      this.piano(mtof(this.deg(P.last)), when, (.11 + Math.random() * .07) * soft, 4.5);
+      if (Math.random() < .18) this.piano(mtof(this.deg(P.last - 2)), when + .02, .06 * soft, 4);
+    }
+    P.step++;
+  }
+  // a soft piano-like note: quick attack, long fading tail, gets mellower as it fades
+  piano(freq, t, vel, len = 4) {
+    const ctx = this.ctx, g = ctx.createGain(), f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(Math.min(5200, freq * 7), t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(500, freq * 1.6), t + 1.4);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + .006);
+    g.gain.exponentialRampToValueAtTime(vel * .35, t + .35);
+    g.gain.exponentialRampToValueAtTime(.0001, t + len * (freq < 200 ? 1.3 : 1));
+    for (const [type, mul, gain, det] of [['sine', 1, 1, 0], ['triangle', 2, .18, 3], ['sine', 1, .35, -7], ['sine', 3, .05, 0]]) {
+      const o = ctx.createOscillator(), og = ctx.createGain();
+      o.type = type;
+      o.frequency.value = freq * mul;
+      o.detune.value = det;
+      og.gain.value = gain;
+      o.connect(og).connect(f);
+      o.start(t);
+      o.stop(t + len * 1.4 + .1);
+    }
+    f.connect(g).connect(this.dry);
+  }
+  pad(freq, t, dur, gain) {
+    const ctx = this.ctx, g = ctx.createGain(), f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 900;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + dur * .4);
+    g.gain.linearRampToValueAtTime(0, t + dur + 1.5);
+    for (const det of [-5, 5]) {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = freq;
+      o.detune.value = det;
+      o.connect(f);
+      o.start(t);
+      o.stop(t + dur + 1.6);
+    }
+    f.connect(g).connect(this.dry);
+  }
+
+  // ---------- nature around the music ----------
+  ambience(now) {
+    const ctx = this.ctx;
+    // a very soft breeze all the time
+    if (!this.wind) {
+      const len = ctx.sampleRate * 3, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0, last = 0; i < len; i++) { last = last * .985 + (Math.random() * 2 - 1) * .015; d[i] = last * 6; }
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = buf; src.loop = true;
+      f.type = 'lowpass'; f.frequency.value = 500;
+      g.gain.value = .05;
+      src.connect(f).connect(g).connect(this.master);
+      src.start();
+      this.wind = { f, g };
+    }
+    this.wind.f.frequency.setTargetAtTime(380 + Math.sin(now * .07) * 160, now, 2);
+    this.wind.g.gain.setTargetAtTime(this.night ? .035 : .05, now, 3);
+    if (now < (this.natureAt || 0)) return;
+    if (this.night) {
+      // crickets, and now and then an owl
+      this.natureAt = now + .5 + Math.random() * 1.3;
+      if (Math.random() < .04) { this.owl(now + .1); this.natureAt += 3; return; }
+      const base = 4200 + Math.random() * 900;
+      for (let k = 0; k < 3 + Math.floor(Math.random() * 3); k++) this.chirp(now + .05 + k * .075, base, base, .012, .045);
+    } else {
+      // little birds
+      this.natureAt = now + 2.5 + Math.random() * 6;
+      const n = 2 + Math.floor(Math.random() * 4), f0 = 2600 + Math.random() * 1800;
+      for (let k = 0; k < n; k++) this.chirp(now + .05 + k * (.11 + Math.random() * .06), f0 * (1 + Math.random() * .25), f0 * (1.3 + Math.random() * .4), .016, .07 + Math.random() * .05);
+    }
+  }
+  chirp(t, f0, f1, gain, dur) {
     const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
-    o.frequency.setValueAtTime(110, t);
-    o.frequency.exponentialRampToValueAtTime(45, t + .18);
-    g.gain.setValueAtTime(.16, t);
-    g.gain.exponentialRampToValueAtTime(.0001, t + .3);
-    o.connect(g).connect(this.master);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + .01);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(this.dry);
     o.start(t);
-    o.stop(t + .35);
+    o.stop(t + dur + .02);
   }
-  hat(t, gain, freq = 8000) {
-    const ctx = this.ctx, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-    src.buffer = this.noise;
-    f.type = 'bandpass';
-    f.frequency.value = freq;
-    g.gain.setValueAtTime(gain, t);
-    g.gain.exponentialRampToValueAtTime(.0001, t + .06);
-    src.connect(f).connect(g).connect(this.master);
-    src.start(t);
-    src.stop(t + .08);
+  owl(t) {
+    for (const [dt, f] of [[0, 410], [.5, 390], [.75, 380]]) {
+      const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, t + dt);
+      o.frequency.linearRampToValueAtTime(f * .92, t + dt + .35);
+      g.gain.setValueAtTime(0, t + dt);
+      g.gain.linearRampToValueAtTime(.03, t + dt + .08);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dt + .4);
+      o.connect(g).connect(this.dry);
+      o.start(t + dt);
+      o.stop(t + dt + .45);
+    }
   }
 }

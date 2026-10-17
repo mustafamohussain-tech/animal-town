@@ -71,7 +71,7 @@ export const TYPES = {
   park: { emoji: '🌳', open: true, tiles: [1, 1], floors: [1, 1, 1], time: 10, canBurn: false, signBg: '#2e7d32', styles: { small: {}, big: { tiles: [2, 2] } } },
   custom: { emoji: '🏗️', role: 'office', tiles: [1, 1], floors: [1, 20, 3], time: 12, styles: { custom: {} } },
 };
-export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'park', 'garage'];
+export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'garage'];   // parks are drawn with the park tool
 
 // turn a type + choices into a full design ("spec") with colours picked
 export function makeSpec(type, o = {}) {

@@ -13,7 +13,7 @@ import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, set
 
 const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['boat', '🚣'], ['drive', '🚕'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
-const TOOL_LIST = [['road', '🛣️'], ['path', '🟫'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['gardenlamp', '🏮'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
+const TOOL_LIST = [['road', '🛣️'], ['path', '🟫'], ['parkzone', '🌲'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['gardenlamp', '🏮'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);
@@ -111,7 +111,7 @@ export class UI {
     this.renderHistory();
     $('time-range').oninput = e => game.setHour(+e.target.value);
     $('btn-pause').onclick = () => { game.daynight.setPaused(!game.daynight.paused); this.renderTime(); };
-    $('sel-cycle').onchange = e => game.daynight.setCycle(+e.target.value);
+    $('sel-cycle').onchange = e => { if (e.target.value === 'real') game.daynight.setReal(); else game.daynight.setCycle(+e.target.value); };
     $('sel-build').onchange = e => { game.buildDuration = +e.target.value; };
     $('btn-day').onclick = () => game.setHour(9);
     $('btn-night').onclick = () => game.setHour(22);
@@ -427,7 +427,7 @@ export class UI {
   }
 
   refreshAll() {
-    $('sel-cycle').value = String(this.game.daynight.cycleMs);
+    $('sel-cycle').value = this.game.daynight.real ? 'real' : String(this.game.daynight.cycleMs);
     $('sel-build').value = String(this.game.buildDuration);
     $('chk-follow').checked = this.game.followNew;
     $('chk-sleep').checked = this.game.nightSleep;

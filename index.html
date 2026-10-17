@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -205,6 +205,7 @@
       <label class="check"><input type="checkbox" id="chk-sleep" checked> <span data-i18n="nightSleep"></span></label>
       <label class="fld wide"><span data-i18n="cycleL"></span>
         <select id="sel-cycle">
+          <option value="real" data-i18n="cyc_real"></option>
           <option value="43200000" data-i18n="cyc_12h"></option>
           <option value="86400000" data-i18n="cyc_24h"></option>
           <option value="1440000" data-i18n="cyc_24m"></option>
@@ -217,7 +218,9 @@
       <label class="fld wide"><span data-i18n="buildL"></span>
         <select id="sel-build">
           <option value="604800000" data-i18n="bd_7d"></option>
+          <option value="432000000" data-i18n="bd_5d"></option>
           <option value="259200000" data-i18n="bd_3d"></option>
+          <option value="172800000" data-i18n="bd_2d"></option>
           <option value="86400000" data-i18n="bd_1d"></option>
           <option value="3600000" data-i18n="bd_1h"></option>
           <option value="60000" data-i18n="bd_1m"></option>

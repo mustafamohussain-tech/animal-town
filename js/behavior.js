@@ -415,6 +415,27 @@ function swimAct(w, sh, sec) {
   };
 }
 
+// ---------- parks: a stroll on the path, a rest on a bench ----------
+export function parkActs(c) {
+  const g = c.game;
+  if (!g.parks.list.length) return null;
+  const benches = g.props.list.filter(b => b.type === 'bench' && !b.user && g.parks.at(b.x, b.z));
+  const pos = c.root.position;
+  benches.sort((a, b) => Math.hypot(a.x - pos.x, a.z - pos.z) - Math.hypot(b.x - pos.x, b.z - pos.z));
+  const b = Math.random() < .7 && benches.slice(0, 4)[Math.floor(Math.random() * Math.min(4, benches.length))];
+  if (b) {
+    const fx = Math.sin(b.rot), fz = Math.cos(b.rot), front = { x: b.x + fx * 1.2, z: b.z + fz * 1.2 };
+    return [goTo(front.x, front.z), {
+      name: 'bench',
+      start(x) { b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(8, 16); if (Math.random() < .3) x.say(pick(['😌', '🌳', '☀️', '🐦'])); },
+      update(x, dt) { this.left -= dt; return this.left <= 0; },
+      end(x) { b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
+    }];
+  }
+  const s = g.paths.walkSpot(pos) || null;
+  return s ? [goTo(s.x, s.z), wait(rand(2, 4), 'idle')] : null;
+}
+
 // ---------- the "brain": what to do when nobody gives orders ----------
 export function brain(c) {
   const g = c.game;
@@ -533,6 +554,7 @@ function idleRoutine(c) {
     const o = g.nearbyIdle(c, 12);
     if (o) { o.command([chatAct(c, false)], false); return [chatAct(o, true)]; }
   }
+  if (!night && g.parks.list.length && Math.random() < .14) { const l = parkActs(c); if (l) return l; }
   if (!night && g.water.list.length && Math.random() < .09) {
     const r2 = Math.random();
     const l = r2 < .45 ? swimActs(c) : r2 < .65 ? boatActs(c) : waterFishActs(c);

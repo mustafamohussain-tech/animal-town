@@ -2,6 +2,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { HorizontalTiltShiftShader } from 'three/addons/shaders/HorizontalTiltShiftShader.js';
+import { VerticalTiltShiftShader } from 'three/addons/shaders/VerticalTiltShiftShader.js';
 import { Grid, TILE, MAX_R } from './path.js';
 import { mesh, mat, sphere, cylGeo, rand, pick, clamp, mergeStatic } from './util.js';
 
@@ -40,7 +46,7 @@ export class World {
     c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     c.maxPolarAngle = Math.PI * .48;
     c.minDistance = 2.5;
-    c.maxDistance = 260;
+    c.maxDistance = 420;   // far out the town turns into a miniature (see render)
     c.screenSpacePanning = false;
 
     this.hemi = new THREE.HemisphereLight('#ffffff', '#6aa84f', 1.15);
@@ -74,7 +80,8 @@ export class World {
     this.border = new THREE.Group();
     s.add(this.border);
     this.buildMist();
-    this.buildClouds();
+    this.clouds = [];   // (no clouds in the sky)
+    this.buildMiniature();
     this.setLand(5);
   }
 
@@ -115,7 +122,7 @@ export class World {
   }
   // the fog covers everything outside the land, with a soft edge so the border isn't a hard line
   placeMist() {
-    const half = this.landHalf, ext = half + 260, N = 1024;
+    const half = this.landHalf, ext = half + 700, N = 2048;   // big enough for the far-away miniature view
     const c = document.createElement('canvas');
     c.width = c.height = N;
     const x = c.getContext('2d'), k = N / (ext * 2);
@@ -172,10 +179,6 @@ export class World {
     // the upper veil breathes a little
     this.mistT = (this.mistT || 0) + dt;
     this.mistLayers[1].material.opacity = .36 + Math.sin(this.mistT * .4) * .06;
-    for (const c of this.clouds) {
-      c.position.x += c.userData.speed * dt;
-      if (c.position.x > 320) c.position.x = -320;
-    }
     const t = this.controls.target, half = this.landHalf + 20;
     t.x = clamp(t.x, -half, half);
     t.z = clamp(t.z, -half, half);
@@ -225,12 +228,41 @@ export class World {
     }
   }
 
+  // far away from the town it looks like a little model on a table: the top and bottom of the picture
+  // blur (tilt-shift) and the name labels fade out
+  buildMiniature() {
+    const c = this.composer = new EffectComposer(this.renderer);
+    c.addPass(new RenderPass(this.scene, this.camera));
+    this.tiltH = new ShaderPass(HorizontalTiltShiftShader);
+    this.tiltV = new ShaderPass(VerticalTiltShiftShader);
+    c.addPass(this.tiltH);
+    c.addPass(this.tiltV);
+    c.addPass(new OutputPass());
+    this.cSize = new THREE.Vector2();
+  }
+  get miniature() {
+    const d = this.camera.position.distanceTo(this.controls.target), s = x => x * x * (3 - 2 * x);
+    return s(Math.max(0, Math.min(1, (d - 120) / 140)));
+  }
   render() {
     if (this.renderer.getScissorTest()) this.renderer.setScissorTest(false);   // safety: never draw only a corner
     // shadows only need a refresh when something moved; the light only moves in whole shadow pixels
     if ((this.frame++ & 1) === 0 || !this.lastSun?.equals(this.sun.position)) this.sun.shadow.needsUpdate = true;
     (this.lastSun ||= new THREE.Vector3()).copy(this.sun.position);
-    this.renderer.render(this.scene, this.camera);
+    const k = this.miniature;
+    this.labels.domElement.style.opacity = String(Math.max(0, 1 - k * 2.2));
+    if (k > .02) {
+      const pr = this.renderer.getPixelRatio(), sz = this.renderer.getSize(this.cSize);
+      if (pr !== this.cPR || sz.x !== this.cW || sz.y !== this.cH) {
+        this.cPR = pr; this.cW = sz.x; this.cH = sz.y;
+        this.composer.setPixelRatio(pr);
+        this.composer.setSize(sz.x, sz.y);
+      }
+      this.tiltH.uniforms.h.value = k * 2.6 / (sz.x * pr);
+      this.tiltV.uniforms.v.value = k * 2.6 / (sz.y * pr);
+      this.tiltH.uniforms.r.value = this.tiltV.uniforms.r.value = .5;
+      this.composer.render();
+    } else this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }
 }

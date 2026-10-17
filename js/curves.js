@@ -4,7 +4,7 @@ import { TILE } from './path.js';
 import { box, cyl, mat, sideMat, mergeStatic, shadows, dist2d } from './util.js';
 import { tileOf, BRIDGE_H as DECK_H } from './tiles.js';
 
-const ROAD_W = 7, WALK_W = 2.4, BRIDGE_H = 7.5, RAMP = 22;
+const ROAD_W = 6.8, WALK_W = 2.6, BRIDGE_H = 7.5, RAMP = 22;   // road + sidewalk widths match a straight road tile
 const smooth = x => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
 // a flat ribbon following the samples, offset sideways from a..b, at height y(k)
@@ -59,14 +59,17 @@ export function buildCurveMesh(pts, bridge, preview, opts = {}) {
   const g = new THREE.Group();
   if (S.length < 2) return g;
   const hw = ROAD_W / 2;
-  g.add(ribbon(S, -hw, hw, .085, preview ? '#7d8fb0' : '#5d626b'));
-  g.add(ribbon(S, -hw - WALK_W, -hw, .16, '#cfc9bc'));
-  g.add(ribbon(S, hw, hw + WALK_W, .16, '#cfc9bc'));
-  g.add(wall(S, -hw - WALK_W, .02, .16, '#b8b2a5'));
-  g.add(wall(S, hw + WALK_W, .02, .16, '#b8b2a5'));
+  g.add(ribbon(S, -hw, hw, .062, preview ? '#7d8fb0' : '#5d626b'));
+  g.add(ribbon(S, -hw - WALK_W, -hw, .14, '#cfc9bc'));
+  g.add(ribbon(S, hw, hw + WALK_W, .14, '#cfc9bc'));
+  g.add(wall(S, -hw - WALK_W, .02, .14, '#b8b2a5'));
+  g.add(wall(S, hw + WALK_W, .02, .14, '#b8b2a5'));
+  g.add(wall(S, -hw, .02, .2, '#a9a294'));   // curbs, like the straight roads
+  g.add(wall(S, hw, .02, .2, '#a9a294'));
+  // the centre line continues the straight road's dashes (1.6 long every 3)
   for (const s of S) {
-    if (Math.round(s.d) % 3 !== 0 || s.d < 1) continue;
-    const d = box(.18, .01, 1.5, '#f2f2f2', s.x, s.y + .095, s.z);
+    if (Math.round(s.d * 2) % 6 !== 2 || s.d < 1) continue;
+    const d = box(.18, .01, 1.6, '#f2f2f2', s.x, s.y + .07, s.z);
     d.rotation.y = Math.atan2(s.tx, s.tz);
     g.add(d);
   }
@@ -141,7 +144,8 @@ export class Curves {
     c.lift = c.bridge ? null : this.liftFor(c.pts);
     const prof = c.bridge || c.lift || false;
     c.S = sampleCurve(c.pts, prof);
-    c.group = buildCurveMesh(c.pts, prof, false, { skip: (x, z) => this.game.tiles.isDrivable(tileOf(x), tileOf(z)) });
+    // pillars never stand on a road or in water
+    c.group = buildCurveMesh(c.pts, prof, false, { skip: (x, z) => this.game.tiles.isDrivable(tileOf(x), tileOf(z)) || !!this.game.water?.wetAt(x, z, 1.5) });
     this.game.scene.add(c.group);
     // tiles under a ground-level road can't hold buildings
     c.tiles = new Set();

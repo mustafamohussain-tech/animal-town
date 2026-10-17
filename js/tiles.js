@@ -37,6 +37,7 @@ export class TileMap {
     if (!this.game.world.inLand(i, j)) return false;
     const r = this.get(i, j);
     if (this.game.water?.tileWet(i, j)) return false;
+    if (this.game.parks?.tileIn(i, j)) return false;   // parks stay green
     return !r || (!r.road && !r.dirt && r.curve <= 0 && (r.building == null || r.building === ignoreId));
   }
   claim(i, j, id) { this.rec(i, j).building = id; this.stampCost(i, j); this.refreshAround(i, j); }
@@ -71,6 +72,7 @@ export class TileMap {
     }
     // curved roads and footpaths drawn over this tile
     this.game.curves?.stampCost?.(i, j);
+    this.game.parks?.stampCost?.(i, j);
     this.game.paths?.stampCost?.(i, j);
   }
   // a spot on a sidewalk near p (where people stroll), or null when there are no roads around
@@ -138,6 +140,7 @@ export class TileMap {
     if (!this.game.world.inLand(i, j)) return false;
     const r = this.rec(i, j);
     if (on && r.building != null) return false;
+    if (on && r.curve > 0) return false;   // a curved road is already here: no road on top of it
     if (r.road === on) return false;
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
@@ -335,8 +338,13 @@ export class TileMap {
       const sup = new THREE.Group();
       if (bh) {
         g.position.y = bh;
+        // the deck spans the water on two deep girders: no pillars stand in the water
         box(TILE, .6, TILE, '#b8b2a5', 0, bh - .32, 0, sup);
-        for (const sx of [-1, 1]) for (const sz of [-1, 1]) cyl(.45, .6, bh, '#a8a39a', sx * (HALF - 1.6), bh / 2 - .3, sz * (HALF - 1.6), sup, 10);
+        const along = n || s;   // girders run the way the road runs
+        for (const sd of [-1, 1]) {
+          if (along) box(1, 1.1, TILE, '#a8a39a', sd * (HALF - 1.2), bh - 1.1, 0, sup);
+          else box(TILE, 1.1, 1, '#a8a39a', 0, bh - 1.1, sd * (HALF - 1.2), sup);
+        }
       } else {
         const [dx, dz] = rd, ang = Math.atan2(BRIDGE_H, TILE);
         g.position.y = BRIDGE_H / 2;

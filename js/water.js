@@ -78,10 +78,33 @@ function flatShape(poly, y, material, uvScale) {
   m.receiveShadow = true;
   return m;
 }
+// river points with their corners rounded off (the ends stay where they were)
+export function roundCorners(pts, it = 3) {
+  let p = pts;
+  for (let n = 0; n < it && p.length > 2; n++) {
+    const out = [p[0]];
+    for (let k = 0; k < p.length - 1; k++) {
+      const a = p[k], b = p[k + 1];
+      if (k > 0) out.push({ x: a.x * .75 + b.x * .25, z: a.z * .75 + b.z * .25 });
+      if (k < p.length - 2) out.push({ x: a.x * .25 + b.x * .75, z: a.z * .25 + b.z * .75 });
+    }
+    out.push(p[p.length - 1]);
+    p = out;
+  }
+  return p;
+}
 function strip(S, a, b, y, material, vScale) {
   const pos = [], uv = [], idx = [];
-  S.forEach(s => {
-    pos.push(s.x + s.nx * a, y, s.z + s.nz * a, s.x + s.nx * b, y, s.z + s.nz * b);
+  S.forEach((s, k) => {
+    // in a tight bend the inner edge is pulled in so the band never folds over itself
+    let ia = a, ib = b;
+    const p0 = S[k - 1] || s, p1 = S[k + 1] || s;
+    const dtx = (p1.tx ?? 0) - (p0.tx ?? 0), dtz = (p1.tz ?? 0) - (p0.tz ?? 0), turn = Math.hypot(dtx, dtz);
+    if (turn > 1e-4) {
+      const R = Math.hypot(p1.x - p0.x, p1.z - p0.z) / turn, toward = dtx * s.nx + dtz * s.nz;
+      if (toward > 0) ib = Math.min(ib, R * .85); else ia = Math.max(ia, -R * .85);
+    }
+    pos.push(s.x + s.nx * ia, y, s.z + s.nz * ia, s.x + s.nx * ib, y, s.z + s.nz * ib);
     uv.push(0, s.d * vScale, 1, s.d * vScale);
   });
   for (let k = 0; k < S.length - 1; k++) { const i = k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
@@ -315,7 +338,7 @@ export class Water {
       g.add(w.boat);
       for (let k = 0; k < 3; k++) { const d = makeDuck(); d.userData.u = Math.random(); d.userData.sp = rand(.006, .012); g.add(d); w.ducks.push(d); }
     } else {
-      const S = w.S = sampleCurve(w.pts, false), hw = w.width / 2;
+      const S = w.S = sampleCurve(roundCorners(w.pts), false), hw = w.width / 2;
       g.add(strip(S, -hw - 1.8, hw + 1.8, SAND_Y, MAT.sand, .1));
       g.add(strip(S, -hw, hw, WATER_Y - (w.id % 6) * .002, MAT.river, .08));
       // an end that flows into other water gets a round end, so the joint is smooth
@@ -507,7 +530,7 @@ export function previewWater(kind, pts, width) {
     const m = flatShape(poly, WATER_Y + .02, new THREE.MeshBasicMaterial({ color: '#4fb3df', transparent: true, opacity: .55, depthWrite: false }), 1);
     g.add(m);
   } else {
-    const S = sampleCurve(pts, false);
+    const S = sampleCurve(roundCorners(pts), false);
     const hw = kind === 'river' ? width / 2 : .6;
     g.add(strip(S, -hw, hw, WATER_Y + .02, new THREE.MeshBasicMaterial({ color: '#4fb3df', transparent: true, opacity: .55, depthWrite: false }), .1));
   }

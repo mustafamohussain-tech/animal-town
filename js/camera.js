@@ -56,7 +56,7 @@ export class CameraDirector {
 
   setMode(mode, o = {}) {
     const ctl = this.ctl;
-    if (this.mode === 'interior') { ctl.minDistance = 2.5; ctl.maxDistance = 260; ctl.maxPolarAngle = Math.PI * .48; }
+    if (this.mode === 'interior') { ctl.minDistance = 2.5; ctl.maxDistance = 420; ctl.maxPolarAngle = Math.PI * .48; }
     if (this.mode === 'cinema' || this.mode === 'plane') ctl.target.copy(this.look);
     this.mode = mode;
     this.goal = null;
@@ -266,6 +266,21 @@ export class CameraDirector {
       if (cam.position.distanceTo(this.goal.pos) < .3) this.goal = null;
     }
     ctl.update();
+    if (this.mode !== 'interior') this.keepOutside();
     this.look.copy(ctl.target);
+  }
+  // the camera never goes under the ground or into a building (the inside view is its own mode)
+  keepOutside() {
+    const p = this.cam.position;
+    if (p.y < 1.4) p.y = 1.4;
+    for (const b of this.game.town.all) {
+      if (b.def.open || b.W == null) continue;
+      const l = b.toLocal(p.x, p.z), mx = b.W / 2 + .9, mz = b.D / 2 + .9;
+      if (Math.abs(l.x) >= mx || Math.abs(l.z) >= mz || p.y > (b.roofTop ?? 3) + 1.2) continue;
+      // out through the nearest wall
+      const nx = mx - Math.abs(l.x) < mz - Math.abs(l.z);
+      const w = b.toWorld(nx ? Math.sign(l.x || 1) * mx : l.x, nx ? l.z : Math.sign(l.z || 1) * mz);
+      p.x = w.x; p.z = w.z;
+    }
   }
 }
