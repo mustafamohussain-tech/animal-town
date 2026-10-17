@@ -36,6 +36,8 @@ export class World {
     c.zoomSpeed = 1.3;
     c.panSpeed = 1;
     c.zoomToCursor = true;
+    // mouse: left drag = move over the map, right drag = turn the camera, wheel = zoom
+    c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     c.maxPolarAngle = Math.PI * .48;
     c.minDistance = 2.5;
     c.maxDistance = 260;

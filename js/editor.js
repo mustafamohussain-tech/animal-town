@@ -60,8 +60,10 @@ export class Editor {
     this.opts = opts;
     this.manualRot = false;
     const ctl = this.game.world.controls;
-    ctl.mouseButtons.LEFT = tool ? -1 : THREE.MOUSE.ROTATE;
-    ctl.mouseButtons.RIGHT = tool ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+    // with a tool the left button builds; right still turns, the middle button moves the map
+    ctl.mouseButtons.LEFT = tool ? -1 : THREE.MOUSE.PAN;
+    ctl.mouseButtons.MIDDLE = tool ? THREE.MOUSE.PAN : THREE.MOUSE.DOLLY;
+    ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     this.game.world.renderer.domElement.style.cursor = tool ? 'crosshair' : '';
     // building / drawing needs a free camera: stop following a citizen and look from above
     const d = this.game.director;

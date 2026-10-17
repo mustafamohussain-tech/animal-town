@@ -28,7 +28,7 @@ const STR = {
     hint_prop: 'Click to place. R = turn.',
     // camera
     camera: 'Camera', cam_free: 'Free', cam_follow: 'Follow', cam_cinema: 'Cinematic', cam_plane: 'Airplane', cam_overview: 'Whole town',
-    cam_enter: 'Enter building', cam_exit: 'Exit building', floor: 'Floor {n}', camHint: 'Keys: WASD / arrows move · Q Z up/down · F follow · C cinematic · P airplane · O whole town · E enter/exit · [ ] floors',
+    cam_enter: 'Enter building', cam_exit: 'Exit building', floor: 'Floor {n}', camHint: 'Mouse: left drag = move · right drag = turn · wheel = zoom (while building: middle drag = move). Keys: WASD / arrows move · Q Z up/down · F follow · C cinematic · P airplane · O whole town · E enter/exit · [ ] floors',
     // time
     time: 'Time', pause: 'Pause time', resume: 'Run time', day: 'Day', night: 'Night', nightSleep: 'Citizens sleep at home at night',
     // building card
@@ -133,7 +133,7 @@ const STR = {
     hint_bridge: 'مثل الشارع المنحني لكنه مرتفع فوق الشوارع. اضغط النقاط ثم نقرتين للإنهاء.',
     hint_prop: 'اضغط للوضع. R = تدوير.',
     camera: 'الكاميرا', cam_free: 'حرة', cam_follow: 'تتبع', cam_cinema: 'سينمائية', cam_plane: 'طائرة', cam_overview: 'المدينة كاملة',
-    cam_enter: 'ادخل البناية', cam_exit: 'اخرج من البناية', floor: 'الطابق {n}', camHint: 'أزرار: WASD أو الأسهم للتحريك · Q Z صعود/نزول · F تتبع · C سينمائي · P طائرة · O المدينة · E دخول/خروج · [ ] الطوابق',
+    cam_enter: 'ادخل البناية', cam_exit: 'اخرج من البناية', floor: 'الطابق {n}', camHint: 'الماوس: سحب بالزر الأيسر = تحريك · سحب بالأيمن = تدوير · العجلة = تقريب (أثناء البناء: سحب بالعجلة = تحريك). أزرار: WASD أو الأسهم للتحريك · Q Z صعود/نزول · F تتبع · C سينمائي · P طائرة · O المدينة · E دخول/خروج · [ ] الطوابق',
     time: 'الوقت', pause: 'إيقاف الوقت', resume: 'تشغيل الوقت', day: 'نهار', night: 'ليل', nightSleep: 'السكان ينامون في بيوتهم بالليل',
     floorsN: '{n} طوابق', residents: 'السكان: {n}', workers: 'العاملون: {n}', owner: 'المالك: {name}', demolish: 'هدم', demolishConfirm: 'هدم هذه البناية؟',
     designer: 'مصمم البنايات', dName: 'الاسم', dRole: 'الاستخدام', dWidth: 'العرض (مربعات)', dDepth: 'العمق (مربعات)', dRoof: 'السقف', dWindow: 'النوافذ',
