@@ -154,7 +154,8 @@ export const SIGN_AR = {
   firestation: 'مركز الإطفاء', farm: 'مزرعة', dock: 'بركة الصيد', park: 'حديقة', garage: 'موقف السيارات',
   custom: 'مبنى', busStop: 'موقف الحافلات',
 };
-export function signTexture(emoji, text, bg = '#2b3a55', fg = '#ffffff') {
+// sub = an optional second line (e.g. the owner's name on a house)
+export function signTexture(emoji, text, bg = '#2b3a55', fg = '#ffffff', sub = '') {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 128;
   const g = c.getContext('2d');
@@ -165,12 +166,16 @@ export function signTexture(emoji, text, bg = '#2b3a55', fg = '#ffffff') {
   g.font = '64px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
   g.fillText(emoji, 70, 68);
   g.fillStyle = fg;
-  let size = 56;
   const font = s => `800 ${s}px "Segoe UI", Tahoma, Arial, sans-serif`;
-  g.font = font(size);
-  while (g.measureText(text).width > 360 && size > 24) g.font = font(size -= 2);
-  g.direction = isArabic(text) ? 'rtl' : 'ltr';
-  g.fillText(text, 300, 68);
+  const line = (str, y, max) => {
+    let size = max;
+    g.font = font(size);
+    while (g.measureText(str).width > 360 && size > 20) g.font = font(size -= 2);
+    g.direction = isArabic(str) ? 'rtl' : 'ltr';
+    g.fillText(str, 300, y);
+  };
+  if (sub) { line(text, 44, 44); g.fillStyle = 'rgba(255,255,255,.92)'; line(sub, 94, 40); }
+  else line(text, 68, 56);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;

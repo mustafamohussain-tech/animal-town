@@ -85,6 +85,8 @@ export function loadData(game, data, { keepLang = false } = {}) {
   }
   for (const p of data.props || []) safe('prop', () => game.props.add(p.type, p.x, p.z, p.rot, { id: p.id, natural: p.natural, scale: p.scale }));
   for (const c of data.chars || []) safe('citizen', () => game.addCharacter(c, false));
+  // the residents exist now: house signs can show their owners' names
+  for (const b of game.town.all) safe('sign', () => b.refreshText());
   for (const v of data.vehicles || []) safe('vehicle', () => game.vehicles.add(v.ownerId, v));
   if (data.events?.calendar) game.events.calendar = data.events.calendar;
   game.daynight.apply();

@@ -135,7 +135,7 @@ export class Game {
     if (!this.chars.includes(c)) return;
     if (this.selected === c) this.select(null);
     for (const b of this.town.all) {
-      if (b.ownerId === c.id) b.ownerId = null;
+      if (b.ownerId === c.id) { b.ownerId = null; b.refreshText(); }
       b.residents = b.residents.filter(id => id !== c.id);
     }
     c.dispose();

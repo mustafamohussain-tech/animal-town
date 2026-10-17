@@ -460,7 +460,9 @@ export class Building {
   }
   drawSign(m) {
     const old = m.material.map;
-    m.material.map = signTexture(this.emoji, this.signText(), this.def.signBg || '#2b3a55');
+    const home = this.type === 'house' || this.spec.role === 'home', owner = home && !this.spec.name && this.game.getChar(this.ownerId);
+    // a house: «منزل» on top and the owner's name in big letters under it
+    m.material.map = owner ? signTexture(this.emoji, SIGN_AR.house, this.def.signBg || '#2b3a55', '#ffffff', owner.name.replace(/^@+/, '')) : signTexture(this.emoji, this.signText(), this.def.signBg || '#2b3a55');
     m.material.needsUpdate = true;
     old?.dispose();
   }
