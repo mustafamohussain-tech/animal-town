@@ -249,11 +249,21 @@ export class Editor {
       if (best) return best;
       if (type === 'lamp') return bad(t('lampRoadside'));            // street lamps only beside roads
       if (type === 'busstop' || T.onAsphalt(p.x, p.z)) return bad(t('propRoadside'));
+      if (this.nearBuilding(p.x, p.z)) return bad(t('propNearBuilding'));
       return busy(p.x, p.z) ? bad('') : free;   // a bench in a park is fine
     }
 
     if (T.onAsphalt(p.x, p.z)) return bad(t('propOffRoad'));
+    if (this.nearBuilding(p.x, p.z)) return bad(t('propNearBuilding'));
     return busy(p.x, p.z) ? bad('') : free;
+  }
+  // too close to a building, or in front of its entrance / sign (trees and the like keep away)
+  nearBuilding(x, z) {
+    return this.game.town.all.some(b => {
+      if (b.def.open) return false;
+      const l = b.toLocal(x, z);
+      return Math.abs(l.x) < b.W / 2 + (b.yard || 0) + 2.5 && l.z > -b.D / 2 - 2.5 && l.z < b.D / 2 + 4.8;
+    });
   }
 
   // tiles of the straight line being drawn

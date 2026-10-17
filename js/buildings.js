@@ -392,7 +392,8 @@ export class Building {
 
     this.footRect = this.rectToWorld([-this.W / 2 - .3, -this.D / 2 - .3, this.W / 2 + .3, this.D / 2 + .3]);
     if (!this.def.open) {
-      const front = this.rectToWorld([-this.W / 2 - this.yard - 1, this.D / 2, this.W / 2 + 1, this.D / 2 + 4.6]);
+      // nothing close to the walls, and nothing in front of the entrance and the sign
+      const front = this.rectToWorld([-this.W / 2 - this.yard - 2.5, -this.D / 2 - 2.5, this.W / 2 + 2.5, this.D / 2 + 4.8]);
       const hadStop = game.props.list.some(p => p.type === 'busstop');
       game.props.clearRect(...front);
       if (hadStop && !game.props.list.some(p => p.type === 'busstop')) setTimeout(() => game.bus.ensureStop(), 0);
