@@ -237,6 +237,7 @@ export class Editor {
         if (!T.isRoad(a, b)) continue;
         for (const [di, dj] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
           if (T.isRoad(a + di, b + dj)) continue;
+          if (T.hasBuilding(a + di, b + dj)) continue;   // never in front of a building (its sign stays clear)
           // the sidewalk along this edge of the road tile
           const cx = a * TILE + di * (H - off), cz = b * TILE + dj * (H - off);
           const along = di ? Math.max(-H + 1.2, Math.min(H - 1.2, p.z - b * TILE)) : Math.max(-H + 1.2, Math.min(H - 1.2, p.x - a * TILE));

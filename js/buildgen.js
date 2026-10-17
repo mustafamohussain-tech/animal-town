@@ -126,7 +126,8 @@ export function buildShell(b, spec, W, D, o = {}) {
       }
       if (spec.awning) {
         const n = 8, aw = Math.min(W * .85, 9) / n;
-        for (let i = 0; i < n; i++) box(aw, .06, 1.6, i % 2 ? '#ffffff' : spec.awning, -aw * n / 2 + aw * (i + .5), 3.55, D / 2 + .75, front).rotation.x = .38;
+        // under the sign (never over it), still above people's heads
+        for (let i = 0; i < n; i++) box(aw, .06, 1.6, i % 2 ? '#ffffff' : spec.awning, -aw * n / 2 + aw * (i + .5), 3.0, D / 2 + .75, front).rotation.x = .38;
       }
       if (spec.sign !== false) {
         const sw = Math.min(W * .55, 6), sx = b.doorX;

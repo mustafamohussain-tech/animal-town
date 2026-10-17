@@ -47,7 +47,7 @@ function townDecor(g, key) {
   const lights = key === 'eid' || key === 'fireworks' || key === 'concert';
   for (const [i, j] of T.roadList()) {
     if (T.bridgeH(i, j) || T.rampDir(i, j)) continue;
-    const sides = [[0, 1], [0, -1], [1, 0], [-1, 0]].filter(([a, b]) => !T.isDrivable(i + a, j + b));
+    const sides = [[0, 1], [0, -1], [1, 0], [-1, 0]].filter(([a, b]) => !T.isDrivable(i + a, j + b) && !T.hasBuilding(i + a, j + b));
     sides.forEach(([a, b], n) => {
       if ((i + j + n) % 2) return;
       const p = new THREE.Group();

@@ -147,6 +147,13 @@ export function emojiTexture(e) {
 const isArabic = s => /[؀-ۿ]/.test(s);
 
 // shop/building sign: rounded board with emoji + name
+// the words on the signs of the town's buildings, always in correct formal Arabic (whatever the panel language)
+export const SIGN_AR = {
+  house: 'منزل', apartment: 'عمارة سكنية', shop: 'متجر', shop_food: 'متجر الأغذية', shop_clothes: 'متجر الملابس',
+  shop_toys: 'متجر الألعاب', restaurant: 'مطعم', hospital: 'مستشفى', school: 'مدرسة', police: 'مركز الشرطة',
+  firestation: 'مركز الإطفاء', farm: 'مزرعة', dock: 'بركة الصيد', park: 'حديقة', garage: 'موقف السيارات',
+  custom: 'مبنى', busStop: 'موقف الحافلات',
+};
 export function signTexture(emoji, text, bg = '#2b3a55', fg = '#ffffff') {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 128;

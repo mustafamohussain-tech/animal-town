@@ -210,9 +210,9 @@ const STR = {
   },
 };
 
-let lang = 'ar';   // Arabic by default (the audience is Arab); English stays one click away
+let lang = 'en';
 export const getLang = () => lang;
-export const setLang = l => { lang = STR[l] ? l : 'ar'; };
+export const setLang = l => { lang = STR[l] ? l : 'en'; };
 export function t(key, vars) {
   let s = STR[lang][key] ?? STR.en[key] ?? key;
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);

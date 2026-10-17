@@ -120,7 +120,9 @@ export class Game {
       this.announce(t('joined', { name: c.name }));
       // they arrive on the bus, step off and wave
       const byBus = this.bus.arrive(c);
-      c.command([...(byBus ? [{ name: 'bus', update: x => !x.inBus }] : []), wait(2.5, 'wave', { onStart: x => x.say('👋') })], false);
+      // off the bus: wave at the stop and only walk away once the bus has gone (never through it)
+      const busGone = { name: 'busgone', update: () => !['stopped', 'leaving'].includes(this.bus.state) };
+      c.command([...(byBus ? [{ name: 'bus', update: x => !x.inBus }] : []), wait(2.5, 'wave', { onStart: x => x.say('👋') }), ...(byBus ? [busGone] : [])], false);
       if (this.followNew) this.select(c, true);
       this.giveHomes();
       this.emit('joined', c);
@@ -321,6 +323,7 @@ export class Game {
       const o = owner || c;
       if (o) { b.ownerId = o.id; this.moveIn(o, b); }
     }
+    b.refreshText();   // the sign shows the owner's name
     if (c && this.chars.includes(c)) c.command([buildAct(b), wait(2, 'cheer', { onStart: x => x.say('🎉') })]);
     let ref = b;
     this.history.push(b.displayName(), () => this.demolish(ref), () => { ref = this.restoreBuilding(ref.toJSON()); });
@@ -449,6 +452,7 @@ export class Game {
   setOwner(b, c) {
     b.ownerId = c ? c.id : null;
     if (c && b.spec.role === 'home') this.moveIn(c, b);
+    b.refreshText();
     this.emit('change');
   }
 

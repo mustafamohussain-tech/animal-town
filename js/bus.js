@@ -1,6 +1,6 @@
 // Arrivals: new residents come to town on a bus. It drives to the bus stop, they step off and wave, the bus leaves.
 import * as THREE from 'three';
-import { box, cyl, mesh, sphere, mergeStatic, shadows, signTexture, clamp } from './util.js';
+import { box, cyl, mesh, sphere, mergeStatic, shadows, signTexture, clamp, SIGN_AR } from './util.js';
 import { NIGHT } from './daynight.js';
 import { TILE } from './path.js';
 import { t } from './i18n.js';
@@ -17,7 +17,7 @@ export function makeBusStop(g, parent) {
   box(3.2, .1, .5, '#a0703f', 0, .6, -.45, parent);
   for (const x of [-1.4, 1.4]) box(.1, .55, .4, '#555555', x, .3, -.45, parent);
   cyl(.07, .07, 3.6, '#3a3f48', 2.6, 1.8, .9, parent, 6);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, .5), new THREE.MeshBasicMaterial({ map: signTexture('🚌', t('busStop'), '#d62d20'), transparent: true, side: THREE.DoubleSide }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, .5), new THREE.MeshBasicMaterial({ map: signTexture('🚌', SIGN_AR.busStop, '#d62d20'), transparent: true, side: THREE.DoubleSide }));
   sign.position.set(2.6, 3.4, .95);
   sign.userData.keep = true;
   parent.add(sign);
@@ -56,7 +56,7 @@ export class BusService {
     for (const [i, j] of roads) {
       if (Math.hypot(i, j) < 1) continue;
       for (const [di, dj] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-        if (g.tiles.isRoad(i + di, j + dj)) continue;
+        if (g.tiles.isRoad(i + di, j + dj) || g.tiles.hasBuilding(i + di, j + dj)) continue;
         const x = i * TILE + di * (HALF - .9), z = j * TILE + dj * (HALF - .9);
         g.props.add('busstop', x, z, Math.atan2(-di, -dj));
         return;

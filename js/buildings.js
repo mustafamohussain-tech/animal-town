@@ -1,7 +1,7 @@
 // Building types + styles, the Building class (placement on tiles, construction, cut-away view, fire) and the Town.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { box, cyl, ball, mesh, sphere, coneGeo, cylGeo, signTexture, shadows, mergeStatic, flatten, rand, pick, clamp, easeOutBack, dist2d } from './util.js';
+import { box, cyl, ball, mesh, sphere, coneGeo, cylGeo, signTexture, SIGN_AR, shadows, mergeStatic, flatten, rand, pick, clamp, easeOutBack, dist2d } from './util.js';
 import { TILE } from './path.js';
 import { buildShell, FH } from './buildgen.js';
 import { F } from './interiors.js';
@@ -391,6 +391,12 @@ export class Building {
     game.scene.add(this.group);
 
     this.footRect = this.rectToWorld([-this.W / 2 - .3, -this.D / 2 - .3, this.W / 2 + .3, this.D / 2 + .3]);
+    if (!this.def.open) {
+      const front = this.rectToWorld([-this.W / 2 - this.yard - 1, this.D / 2, this.W / 2 + 1, this.D / 2 + 4.6]);
+      const hadStop = game.props.list.some(p => p.type === 'busstop');
+      game.props.clearRect(...front);
+      if (hadStop && !game.props.list.some(p => p.type === 'busstop')) setTimeout(() => game.bus.ensureStop(), 0);
+    }
     if (this.progress >= 1) this.finish(true);
     else {
       this.world.grid.mark(...this.footRect, 1);
@@ -453,13 +459,23 @@ export class Building {
   }
   drawSign(m) {
     const old = m.material.map;
-    m.material.map = signTexture(this.emoji, this.displayName(), this.def.signBg || '#2b3a55');
+    m.material.map = signTexture(this.emoji, this.signText(), this.def.signBg || '#2b3a55');
     m.material.needsUpdate = true;
     old?.dispose();
   }
   // what the building counts as (a custom design with role 'shop' works like a shop)
   get kind() { return this.type === 'custom' ? ({ shop: 'shop', restaurant: 'restaurant', hospital: 'hospital', school: 'school', police: 'police', home: 'house', apartment: 'apartment' }[this.spec.role] || 'custom') : this.type; }
   get emoji() { return this.type === 'shop' ? SHOP_EMOJI[this.variant] || '🏪' : (this.spec.emoji || this.def.emoji); }
+  // the sign over the door: formal Arabic; a house shows whose home it is
+  signText() {
+    if (this.spec.name) return this.spec.name;
+    if (this.type === 'house' || this.spec.role === 'home') {
+      const o = this.game.getChar(this.ownerId);
+      return o ? `${SIGN_AR.house} ${o.name.replace(/^@+/, '')}` : SIGN_AR.house;
+    }
+    if (this.type === 'shop') return SIGN_AR['shop_' + this.variant] || SIGN_AR.shop;
+    return SIGN_AR[this.type] || SIGN_AR[this.kind] || SIGN_AR.custom;
+  }
   displayName() {
     if (this.spec.name) return this.spec.name;
     return this.type === 'shop' ? t('b_shop_' + this.variant) : t('b_' + this.type);

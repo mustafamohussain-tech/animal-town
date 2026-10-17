@@ -55,7 +55,7 @@ export function saveGame(game) {
 
 export function loadData(game, data, { keepLang = false } = {}) {
   if (!data || data.v !== 2) return false;
-  if (!keepLang) setLang(data.lang || 'ar');
+  if (!keepLang) setLang(data.lang || 'en');
   if (data.founded) game.founded = data.founded;
   for (const k of ['followNew', 'nightSleep', 'choosePlace', 'showCard']) if (typeof data[k] === 'boolean') game[k] = data[k];
   if (data.screenMode) game.screenMode = data.screenMode;
