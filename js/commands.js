@@ -63,6 +63,7 @@ const PLACE_JOB = { shop: 'shopkeeper', farm: 'farmer', restaurant: 'chef', poli
 const JOB_PLACE = Object.fromEntries(Object.entries(PLACE_JOB).map(([p, j]) => [j, p]));
 const ACTIONS = {
   swim: list('swim,swimming,سباحه,يسبح,اسبح,سبح,يسبحون'),
+  boat: list('boat,row,rowing,kayak,canoe,قارب,زورق,تجديف,يجدف,بلم,البلم,بالقارب'),
   car: list('car,cars,سياره,سيارات,سيارته'),
   dance: list('dance,dancing,party,رقص,ارقص,يرقص,ارقصي'),
   wave: list('wave,hi,hello,hey,salam,لوح,سلم,مرحبا,هاي,اهلا,سلام'),

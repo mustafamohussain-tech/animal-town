@@ -35,10 +35,15 @@ export class CameraDirector {
     this.aim = new THREE.Vector3();  // lightly smoothed position - where the camera points
     this.sa = 0;                     // smoothed facing angle (cinematic)
     this.keys = new Set();
+    // the player takes over: any automatic camera flight (e.g. up to the view from above when building) stops
+    const el = game.world.renderer.domElement;
+    el.addEventListener('pointerdown', () => { this.goal = null; });
+    el.addEventListener('wheel', () => { this.goal = null; }, { passive: true });
     addEventListener('keydown', e => {
       if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || e.ctrlKey || e.metaKey) return;
       const key = e.key.toLowerCase();
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'q', 'z'].includes(key)) {
+        this.goal = null;
         this.keys.add(key);
         if (key.startsWith('arrow')) e.preventDefault();
       }

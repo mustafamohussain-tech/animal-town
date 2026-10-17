@@ -285,3 +285,4 @@ input, select { min-height: 38px; }
 .undo-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .undo-bar button { flex: none; }
 .undo-what { flex: 1; min-width: 0; text-align: center; font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#frame.building-mode .pcard { display: none; }

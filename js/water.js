@@ -7,7 +7,8 @@ import { tileOf } from './tiles.js';
 import { sampleCurve } from './curves.js';
 import { box, cyl, mesh, sphere, mergeStatic, shadows, rand, pick } from './util.js';
 
-const WATER_Y = .05, SAND_Y = .025;
+export const WATER_Y = .05;
+const SAND_Y = .025;
 export const RIVER_W = { small: 6, medium: 10, wide: 16 };
 
 // one ripple picture, used by two textures that move differently (lake drift, river flow)
@@ -145,6 +146,20 @@ function makeBoat() {
   for (const s of [-1, 1]) { const o = box(.07, .07, 2.2, '#c9a27a', s * .8, .5, .2, b); o.rotation.z = s * .5; }
   mergeStatic(b);
   shadows(b);
+  return b;
+}
+// a rowing boat with two oars, for a resident to ride
+export function makeRideBoat() {
+  const b = makeBoat();
+  b.userData.oars = [-1, 1].map(s => {
+    const pivot = new THREE.Group();
+    pivot.position.set(s * .7, .55, .1);
+    const o = box(.07, .07, 2, '#c9a27a', s * .55, 0, 0, pivot);
+    o.rotation.z = s * .45;
+    box(.05, .3, .5, '#a8743f', s * 1.25, -.35, 0, pivot);
+    b.add(pivot);
+    return pivot;
+  });
   return b;
 }
 function makePier(g, from, dir, len) {

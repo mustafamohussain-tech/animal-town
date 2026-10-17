@@ -1,5 +1,7 @@
 // What characters do: small "activities" (walk, wait, build…) chained into routines.
 // An activity is { name, start(c), update(c,dt,t) -> true when done, end(c) }.
+import { swimwear } from './clothes.js';
+import { makeRideBoat, WATER_Y } from './water.js';
 import * as THREE from 'three';
 import { rand, pick, angleTo, dist2d } from './util.js';
 
@@ -248,6 +250,7 @@ export function actionActs(c, a, o = {}) {
     }
     case 'sleep': return sleepActs(c, false);
     case 'swim': return swimActs(c) || [wait(2, 'idle', { onStart: x => x.say('🤷') })];
+    case 'boat': return boatActs(c) || [wait(2, 'idle', { onStart: x => x.say('🤷') })];
     case 'eat': {
       const rest = g.town.nearest('restaurant', pos);
       const l = rest ? eatActs(c, rest) : [];
@@ -297,6 +300,64 @@ export function swimActs(c) {
   const sh = g.water.shoreSpot(c.root.position, w);
   return [goTo(sh.x, sh.z), swimAct(w, sh, rand(16, 26))];
 }
+// a boat ride on the lake from the pier (or the bank), rowing a few laps
+export function boatActs(c) {
+  const g = c.game, w = g.water.nearest(c.root.position, 'lake');
+  if (!w) return null;
+  const dock = w.pier || g.water.shoreSpot(c.root.position, w);
+  return [goTo(dock.x, dock.z, { face: dock.face }), boatAct(w, dock, rand(25, 40))];
+}
+function boatAct(w, dock, sec) {
+  let boat = null, left = sec, k = 0, back = false, from = null;
+  return {
+    name: 'boat',
+    start(c) {
+      left = sec; back = false;
+      from = { x: dock.bob.x, z: dock.bob.z };   // the water next to the pier
+      boat = makeRideBoat();
+      boat.position.set(from.x, WATER_Y, from.z);
+      boat.rotation.y = dock.face;
+      c.game.scene.add(boat);
+      c.inBoat = true;
+      c.setTool(null);
+      c.pose = 'row';
+      c.say('🚣', 2);
+      let bd = Infinity;
+      w.loop.forEach((q, i) => { const d = Math.hypot(q.x - from.x, q.z - from.z); if (d < bd) { bd = d; k = i; } });
+      c.game.effects.emit('splash', { x: from.x, y: .2, z: from.z }, 8);
+    },
+    update(c, dt, t) {
+      left -= dt;
+      if (left <= 0) back = true;
+      const tg = back ? from : w.loop[k], p = boat.position;
+      const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.hypot(dx, dz);
+      if (d < .9) { if (back) return true; k = (k + 1) % w.loop.length; return false; }
+      const want = Math.atan2(dx, dz);
+      let da = want - boat.rotation.y;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      boat.rotation.y += da * Math.min(1, dt * 1.8);
+      const s = Math.min(d, 2.2 * dt) * Math.max(.25, Math.cos(da));
+      p.x += Math.sin(boat.rotation.y) * s;
+      p.z += Math.cos(boat.rotation.y) * s;
+      const bob = Math.sin(t * 1.8) * .05;
+      p.y = WATER_Y + bob;
+      boat.rotation.z = Math.sin(t * 1.3) * .04;
+      for (const o of boat.userData.oars) o.rotation.x = Math.sin(t * 3.2) * .7;
+      c.root.position.set(p.x, .32 + bob, p.z);
+      c.root.rotation.y = boat.rotation.y;
+      c.faceAngle = boat.rotation.y;
+      return false;
+    },
+    end(c) {
+      if (boat) { c.game.scene.remove(boat); boat = null; }
+      c.inBoat = false;
+      c.pose = 'idle';
+      c.root.position.set(dock.x, 0, dock.z);
+      c.say(pick(['😄', '🌊', '👍']), 2);
+    },
+  };
+}
+
 // a few laps on the lake, then out again where they went in
 function swimAct(w, sh, sec) {
   let left = sec, k = 0, back = false;
@@ -306,6 +367,8 @@ function swimAct(w, sh, sec) {
       left = sec; back = false;
       c.pose = 'swim';
       c.swimming = true;
+      c.setTool(null);
+      swimwear(c, true);   // changes into a swimsuit at the water's edge
       c.say('🏊', 2);
       const p = c.root.position;
       let bd = Infinity;
@@ -328,6 +391,8 @@ function swimAct(w, sh, sec) {
     end(c) {
       c.swimming = false;
       c.pose = 'idle';
+      swimwear(c, false);
+      c.game.effects.emit('sparkle', { x: sh.x, y: 1.2, z: sh.z }, 6);
       c.root.position.set(sh.x, 0, sh.z);
       c.say(pick(['😎', '💦', '🥶']), 2);
     },
@@ -452,7 +517,8 @@ function idleRoutine(c) {
     if (o) { o.command([chatAct(c, false)], false); return [chatAct(o, true)]; }
   }
   if (!night && g.water.list.length && Math.random() < .09) {
-    const l = Math.random() < .55 ? swimActs(c) : waterFishActs(c);
+    const r2 = Math.random();
+    const l = r2 < .45 ? swimActs(c) : r2 < .65 ? boatActs(c) : waterFishActs(c);
     if (l) return l;
   }
   if (!night) {

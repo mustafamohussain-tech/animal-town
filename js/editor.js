@@ -42,7 +42,24 @@ export class Editor {
     const el = game.world.renderer.domElement;
     el.addEventListener('pointerdown', e => this.down(e));
     el.addEventListener('pointermove', e => this.move(e));
-    addEventListener('pointerup', () => this.up());
+    addEventListener('pointerup', e => {
+      if (e.button === 2) return;
+      if (this.ldown && e.button === 0) {
+        const moved = Math.hypot(e.clientX - this.ldown.x, e.clientY - this.ldown.y);
+        this.ldown = null;
+        if (moved < 6) this.click(e);
+        return;
+      }
+      this.up();
+    });
+    // right click (without dragging) = cancel: the building being placed, the line or points being drawn, or the tool
+    el.addEventListener('pointerdown', e => { if (e.button === 2) this.rdown = { x: e.clientX, y: e.clientY }; });
+    addEventListener('pointerup', e => {
+      if (e.button !== 2 || !this.rdown) return;
+      const moved = Math.hypot(e.clientX - this.rdown.x, e.clientY - this.rdown.y);
+      this.rdown = null;
+      if (moved < 6 && this.tool) this.cancel();
+    });
     this.linePool = [];
     el.addEventListener('dblclick', () => { if (this.pathTool) this.finishCurve(); });
     el.addEventListener('contextmenu', e => { if (this.tool) e.preventDefault(); });
@@ -50,6 +67,13 @@ export class Editor {
   }
 
   // ---------- switching tools ----------
+  cancel() {
+    if (this.lineStart) { this.lineStart = null; this.hideLine(); return; }
+    if (this.pathTool && this.pts.length) { this.setTool(this.tool); return; }   // drop the points drawn so far
+    const wasPlace = this.tool === 'place';
+    this.setTool(null);
+    this.game.log(i18n(wasPlace ? 'placeCancelled' : 'toolOff'));
+  }
   // tools drawn with points: curved road, bridge, river, lake
   get pathTool() { return ['curve', 'bridge', 'river', 'lake'].includes(this.tool); }
   get waterTool() { return this.tool === 'river' || this.tool === 'lake'; }
@@ -61,7 +85,7 @@ export class Editor {
     this.manualRot = false;
     const ctl = this.game.world.controls;
     // with a tool the left button builds; right still turns, the middle button moves the map
-    ctl.mouseButtons.LEFT = tool ? -1 : THREE.MOUSE.PAN;
+    ctl.mouseButtons.LEFT = tool && (tool === 'road' || tool === 'erase') ? -1 : THREE.MOUSE.PAN;
     ctl.mouseButtons.MIDDLE = tool ? THREE.MOUSE.PAN : THREE.MOUSE.DOLLY;
     ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     this.game.world.renderer.domElement.style.cursor = tool ? 'crosshair' : '';
@@ -93,15 +117,27 @@ export class Editor {
   }
 
   // ---------- mouse ----------
+  // roads / eraser draw while the left button is held; every other tool acts on a click,
+  // so dragging with the left button still moves the map
+  get dragTool() { return this.tool === 'road' || this.tool === 'erase'; }
   down(e) {
     if (!this.tool || e.button !== 0) return;
+    if (!this.dragTool) { this.ldown = { x: e.clientX, y: e.clientY }; return; }
+    const p = this.point(e);
+    if (!p) return;
+    this.lineStart = [tileOf(p.x), tileOf(p.z)];
+    this.lineEnd = this.lineStart;
+    this.showLine();
+  }
+  click(e) {
+    if (!this.tool) return;
     const p = this.point(e);
     if (!p) return;
     const t = this.tool, g = this.game;
-    if (t === 'road' || t === 'erase') { this.lineStart = [tileOf(p.x), tileOf(p.z)]; this.lineEnd = this.lineStart; this.showLine(); return; }
     if (this.pathTool) {
       const q = this.waterTool ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
-      if (this.waterTool && !g.world.inLand(tileOf(q.x), tileOf(q.z))) return;
+      // points outside the town land are pulled back to its edge (not dropped)
+      if (this.waterTool) { const h = g.world.landHalf - 1; q.x = Math.max(-h, Math.min(h, q.x)); q.z = Math.max(-h, Math.min(h, q.z)); }
       this.pts.push(q);
       const dot = new THREE.Mesh(new THREE.SphereGeometry(.5), new THREE.MeshBasicMaterial({ color: '#ffcf3f' }));
       dot.position.set(q.x, .5, q.z);
@@ -111,7 +147,7 @@ export class Editor {
     }
     if (PROP_TYPES[t]) {
       const s = this.propSpot(t, p);
-      if (!s.ok) { if (s.why) g.log(s.why); return; }
+      if (!s.ok) { if (s.why) g.emit('toolmsg', s.why); return; }
       const olds = t === 'busstop' ? g.props.list.filter(q => q.type === 'busstop').map(q => ({ ...q })) : [];
       for (const o of olds) g.props.remove(g.props.list.find(q => q.id === o.id)); // only one bus stop
       let ref = g.props.add(t, s.x, s.z, s.rot);
@@ -327,14 +363,21 @@ export class Editor {
         const d = { kind: tool, pts, width: this.riverWidth };
         const w = g.water.add(d);
         // water may not cover buildings
-        const hit = w && [...g.tiles.tiles.entries()].some(([k, r]) => r.building != null && g.water.tileWet(...k.split(',').map(Number)));
-        if (hit) { g.water.remove(w); g.log(i18n('waterOnBuilding')); }
+        // only refused when the water really covers a building (passing close by is fine);
+        // the points stay, so you can move them (Backspace) and finish again
+        const hit = w && [...g.tiles.tiles.entries()].find(([k, r]) => r.building != null && g.water.tileWet(...k.split(',').map(Number), 0));
+        if (hit) {
+          g.water.remove(w);
+          const b = g.town.get(hit[1].building);
+          g.emit('toolmsg', i18n('waterOnBuilding', { b: b ? b.displayName() : '' }));
+          return;
+        }
         else if (w) {
           let ref = w;
           g.history.push(i18n('tool_' + tool), () => g.water.remove(ref), () => { ref = g.water.add(d, { id: ref.id }); });
           g.emit('change');
         }
-      } else g.log(i18n(tool === 'lake' ? 'needLakePts' : 'needRiverPts'));
+      } else { g.emit('toolmsg', i18n(tool === 'lake' ? 'needLakePts' : 'needRiverPts')); return; }
     } else if (pts.length >= 2) {
       let ref = g.curves.add(pts, tool === 'bridge');
       g.history.push(i18n('tool_' + tool), () => g.curves.remove(ref), () => { ref = g.curves.add(ref.pts, ref.bridge, { id: ref.id }); });

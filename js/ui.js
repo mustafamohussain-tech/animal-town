@@ -11,7 +11,7 @@ import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
 
-const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
+const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['boat', '🚣'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
 const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
@@ -106,6 +106,8 @@ export class UI {
     $('btn-undo').onclick = () => game.history.undo();
     $('btn-redo').onclick = () => game.history.redo();
     game.on('history', () => this.renderHistory());
+    // warnings from the build tools show right under the tools (not only in the log)
+    game.on('toolmsg', m => { $('tool-msg').textContent = '⚠️ ' + m; clearTimeout(this.toolMsgT); this.toolMsgT = setTimeout(() => { $('tool-msg').textContent = ''; }, 6000); });
     this.renderHistory();
     $('time-range').oninput = e => game.setHour(+e.target.value);
     $('btn-pause').onclick = () => { game.daynight.setPaused(!game.daynight.paused); this.renderTime(); };
@@ -132,7 +134,11 @@ export class UI {
       if (gi && s && document.activeElement !== gi && gi.value !== s.goal) gi.value = s.goal || '';
     });
     game.on('log', m => this.addLog(m));
-    game.on('tool', () => this.renderTools());
+    game.on('tool', t2 => {
+      this.renderTools();
+      // cards step aside while choosing where to build, so they don't cover the map
+      document.getElementById('frame').classList.toggle('building-mode', !!t2);
+    });
     game.on('camera', () => this.renderCamera());
     setInterval(() => { this.renderList(); this.renderTime(); }, 1000);
   }
@@ -681,7 +687,7 @@ export class UI {
       grid.appendChild(tile(e, t('tool_' + k), () => this.game.editor.setTool(g.tool === k ? null : k), g.tool === k ? 'on' : ''));
     }
     const tool = g.tool;
-    $('tool-hint').textContent = !tool ? '' : tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool));
+    $('tool-hint').textContent = !tool ? '' : (tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool))) + ' ' + t('rcCancel');
     $('tool-done').style.display = tool ? '' : 'none';
     // river width
     const ex = $('tool-extra');

@@ -83,7 +83,8 @@ export class Character {
     body.add(torso);
     bodyPart(torso, .8, 1.85, 0, this.shirtMat);
     bodyPart(torso, .8, 1.02, .008, this.pantsMat);
-    bodyPart(torso, .99, 1.045, .014, '#3a2c22');
+    this.belt = bodyPart(torso, .99, 1.045, .014, '#3a2c22');
+    this.belt.userData.keep = true; // hidden while swimming
     const neckMesh = mesh(cylGeo(.1, .13, .24 + neck, 14), d.fur, 0, 1.88 + neck / 2, 0, body);
     if (d.neckSpots) {
       for (let k = 0; k < 7; k++) {
@@ -377,6 +378,12 @@ export class Character {
           P.armRx = -2.1 + Math.sin(tt * 3) * .15; P.armRz = .35; break;
         case 'hurt':
           P.armRx = -2.5; P.armRz = .45; P.headRz = .15; P.bodyRx = .08; break;
+        case 'row': {
+          // sitting in the boat, pulling both oars
+          const s = Math.sin(tt * 3.2);
+          P.legL = P.legR = -1.45; P.bodyY = -.3; P.bodyRx = s * .14;
+          P.armRx = P.armLx = -1.25 + s * .55; P.armRz = -.25; P.armLz = .25; break;
+        }
         case 'swim': {
           // only head and shoulders above the water (the rest is under the ground line)
           const s = Math.sin(tt * 4);

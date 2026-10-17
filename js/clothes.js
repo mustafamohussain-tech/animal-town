@@ -142,3 +142,32 @@ export function dress(c, job) {
   shadows(c.gearHead);
   shadows(c.gearBody);
 }
+
+// swimming: a full one-piece swimsuit (body, arms and legs in one colour) and a swim cap, instead of the
+// citizen's own clothes and job gear. on = false puts everything back.
+const SWIM = ['#1e88e5', '#e53935', '#8e24aa', '#00a0a0', '#ff7043', '#3949ab', '#d81b60', '#43a047'];
+export function swimwear(c, on) {
+  if (!!c.inSwimsuit === on) return;
+  c.inSwimsuit = on;
+  if (on) {
+    const col = SWIM[c.id % SWIM.length];
+    c.shirtMat.color.set(col);
+    c.pantsMat.color.set(col);
+    c.gearHead.visible = c.gearBody.visible = false;
+    if (c.belt) c.belt.visible = false;
+    if (!c.swimCap) {
+      c.swimCap = new THREE.Group();
+      const hy = c.def.hatY;
+      mesh(domeGeo(.4), col, 0, hy - .2, 0, c.swimCap).scale.set(1.05, .8, 1.05);
+      mesh(torusGeo(.38, .025, 6, 24), '#ffffff', 0, hy - .19, 0, c.swimCap).rotation.x = Math.PI / 2;
+      c.gearHead.parent.add(c.swimCap);
+    }
+    c.swimCap.children[0].material = mat(col);
+    c.swimCap.visible = true;
+  } else {
+    c.gearHead.visible = c.gearBody.visible = true;
+    if (c.belt) c.belt.visible = true;
+    if (c.swimCap) c.swimCap.visible = false;
+    dress(c, c.job);
+  }
+}
