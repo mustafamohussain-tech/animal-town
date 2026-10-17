@@ -73,7 +73,7 @@ export class World {
     this.land.receiveShadow = true;
     this.border = new THREE.Group();
     s.add(this.border);
-    this.buildForest();
+    this.buildMist();
     this.buildClouds();
     this.setLand(5);
   }
@@ -94,30 +94,43 @@ export class World {
       }
     }
     mergeStatic(this.border);
-    this.placeForest();
+    this.placeMist();
   }
 
-  // ---------- forest ring outside the land (instanced = cheap) ----------
-  buildForest() {
-    const N = this.forestN = 420;
-    this.trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(.3, .42, 2.4, 6), mat('#8b5a2b'), N);
-    this.tops = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.9, 0), mat('#ffffff'), N);
-    this.trunks.castShadow = this.tops.castShadow = true;
-    for (let k = 0; k < N; k++) this.tops.setColorAt(k, new THREE.Color(pick(LEAVES)).multiplyScalar(.68));
-    this.scene.add(this.trunks, this.tops);
+  // ---------- mist over the land we haven't expanded to yet (no trees out there) ----------
+  buildMist() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 4, 64, 64, 62);
+    gr.addColorStop(0, 'rgba(255,255,255,.95)');
+    gr.addColorStop(.45, 'rgba(255,255,255,.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.mistMat = new THREE.SpriteMaterial({ map: tex, color: '#e6ebef', transparent: true, opacity: .8, depthWrite: false });
+    this.mist = new THREE.Group();
+    this.scene.add(this.mist);
   }
-  placeForest() {
-    const half = this.landHalf, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
-    for (let k = 0; k < this.forestN; k++) {
-      let x, z;
-      do { x = rand(-half - 70, half + 70); z = rand(-half - 70, half + 70); } while (Math.max(Math.abs(x), Math.abs(z)) < half + 5);
-      const s = rand(1, 2.2);
-      q.setFromAxisAngle(v.set(0, 1, 0), rand(0, 6));
-      m4.compose(v.set(x, 1.2 * s, z), q, sc.set(s, s, s)); this.trunks.setMatrixAt(k, m4);
-      m4.compose(v.set(x, 3.6 * s, z), q, sc.set(s, s * 1.2, s)); this.tops.setMatrixAt(k, m4);
+  placeMist() {
+    while (this.mist.children.length) this.mist.remove(this.mist.children[0]);
+    const half = this.landHalf;
+    // a ring of soft clouds: thin right at the edge (the land stays visible), thicker further out
+    for (let k = 0; k < 150; k++) {
+      let px, pz, out;
+      do {
+        px = rand(-half - 130, half + 130); pz = rand(-half - 130, half + 130);
+        out = Math.max(Math.abs(px), Math.abs(pz)) - half;
+      } while (out < 3);
+      const s = rand(16, 30) * (out < 20 ? .7 : 1);
+      const sp = new THREE.Sprite(this.mistMat);
+      sp.position.set(px, Math.min(14, 1.5 + out * .12) + rand(0, 3), pz);
+      sp.scale.set(s * 1.8, s * .75, 1);
+      sp.userData = { bx: px, bz: pz, ph: rand(0, 6), amp: rand(1, 3) };
+      sp.renderOrder = 2;
+      this.mist.add(sp);
     }
-    this.trunks.instanceMatrix.needsUpdate = this.tops.instanceMatrix.needsUpdate = true;
-    this.trunks.computeBoundingSphere(); this.tops.computeBoundingSphere();
   }
 
   buildClouds() {
@@ -153,6 +166,15 @@ export class World {
   }
 
   update(dt) {
+    // the mist drifts a little and gets darker at night with the light
+    this.mistT = (this.mistT || 0) + dt;
+    for (const m of this.mist.children) {
+      const u = m.userData;
+      m.position.x = u.bx + Math.sin(this.mistT * .05 + u.ph) * u.amp * 2;
+      m.position.z = u.bz + Math.cos(this.mistT * .04 + u.ph) * u.amp;
+    }
+    const day = Math.min(1, Math.max(0, (this.hemi.intensity - .22) / .95));
+    this.mistMat.color.setRGB(.32 + .6 * day, .35 + .58 * day, .42 + .52 * day);
     for (const c of this.clouds) {
       c.position.x += c.userData.speed * dt;
       if (c.position.x > 320) c.position.x = -320;
@@ -207,6 +229,7 @@ export class World {
   }
 
   render() {
+    if (this.renderer.getScissorTest()) this.renderer.setScissorTest(false);   // safety: never draw only a corner
     // shadows only need a refresh when something moved; the light only moves in whole shadow pixels
     if ((this.frame++ & 1) === 0 || !this.lastSun?.equals(this.sun.position)) this.sun.shadow.needsUpdate = true;
     (this.lastSun ||= new THREE.Vector3()).copy(this.sun.position);

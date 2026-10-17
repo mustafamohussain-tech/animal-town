@@ -235,12 +235,21 @@ export class Character {
       if (st) p.set(st.x, 0, st.z);
       this.upstairs = null;
     }
+    if (this.trip) this.game.traffic.cancel(this);
     p.y = 0;
-    this.path = this.game.world.grid.findPath(p.x, p.z, x, z);
+    // far away: by car (own car or taxi) when there are roads, otherwise on foot
+    const tr = this.game.traffic;
+    if (tr?.wantsRide(this, x, z)) this.trip = tr.startTrip(this, x, z);
+    this.forceRide = null;
+    if (!this.trip) this.path = this.game.world.grid.findPath(p.x, p.z, x, z);
     this.moving = true;
     this.speed = speed;
   }
-  stop() { this.path = null; this.moving = false; }
+  stop() {
+    if (this.trip) this.game.traffic.cancel(this);
+    this.path = null;
+    this.moving = false;
+  }
 
   // replace whatever we're doing with a list of activities
   command(acts, commanded = true) {
@@ -295,6 +304,10 @@ export class Character {
         p.z += dz / d * step;
         this.heading = Math.atan2(dx, dz);
         walking = true;
+      } else if (this.trip) {
+        // at the curb: wait there for the car (still "on the way")
+        this.path = null;
+        if (this.trip.phase === 'walk') this.trip.phase = 'atCurb';
       } else this.stop();
     }
     const want = walking ? this.heading : this.faceAngle;

@@ -23,6 +23,8 @@ export function statusText(c) {
   if (c.hurt) return t('stat_patient');
   if (c.swimming) return t('stat_swim');
   if (c.inBoat) return t('stat_boat');
+  if (c.inCar) return t('stat_drive');
+  if (c.trip) return t('stat_waitCar');
   if (n === 'build') return t('stat_build');
   if (n === 'fire') return t('stat_fire');
   if (n === 'sleep' || c.pose === 'sleep') return t('stat_sleep');
@@ -70,18 +72,19 @@ export function belongings(c) {
 const pcam = new THREE.PerspectiveCamera(32, 1, .1, 60);
 const v = new THREE.Vector3(), v2 = new THREE.Vector2();
 export function portrait(game, c, S = 160) {
+  const r = game.world.renderer, hidden = [];
+  r.getSize(v2);
+  const wasVisible = c.root.visible;
   try {
-    const r = game.world.renderer, scene = game.world.scene;
+    const scene = game.world.scene;
     c.head.getWorldPosition(v);
     const a = c.root.rotation.y + .45;
     pcam.position.set(v.x + Math.sin(a) * 2.4, v.y + .35, v.z + Math.cos(a) * 2.4);
     pcam.lookAt(v.x, v.y - .25, v.z);
     // photo of this citizen only: hide everyone else for a moment
-    const hidden = game.chars.filter(o => o !== c && o.root.visible);
+    hidden.push(...game.chars.filter(o => o !== c && o.root.visible));
     hidden.forEach(o => { o.root.visible = false; });
-    const wasVisible = c.root.visible;
     c.root.visible = true;
-    r.getSize(v2);
     const pr = r.getPixelRatio();
     r.setScissorTest(true);
     r.setViewport(0, 0, S / pr, S / pr);
@@ -90,14 +93,18 @@ export function portrait(game, c, S = 160) {
     const out = document.createElement('canvas');
     out.width = out.height = S;
     const cv = r.domElement;
-    out.getContext('2d').drawImage(cv, 0, cv.height - S, S, S, 0, 0, S, S);
+    out.getContext('2d').drawImage(cv, 0, Math.max(0, cv.height - S), S, S, 0, 0, S, S);
+    return out.toDataURL('image/jpeg', .85);
+  } catch (e) {
+    return '';
+  } finally {
+    // always give the main view its whole canvas back (a stuck scissor box hid most of the map)
     r.setScissorTest(false);
     r.setViewport(0, 0, v2.x, v2.y);
     c.root.visible = wasVisible;
     hidden.forEach(o => { o.root.visible = true; });
     game.world.render();
-    return out.toDataURL('image/jpeg', .85);
-  } catch (e) { return ''; }
+  }
 }
 
 // the card shown inside the game frame (so it appears in the video)

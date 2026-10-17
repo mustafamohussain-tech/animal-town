@@ -8,7 +8,7 @@ const COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6', '#ecf0f1'
 const GLASS = '#8fd3f5';
 
 // car model, front = +z (a citizen is ~2.6 tall, so a car is ~4.4 long)
-function makeCar(type, color) {
+export function makeCar(type, color) {
   const g = new THREE.Group();
   const wheels = (zs, r = .4) => { for (const x of [-1, 1]) for (const z of zs) cyl(r, r, .32, '#1e1e1e', x * 1.02, r, z, g, 14).rotation.z = Math.PI / 2; };
   const lights = (zf, zb, y) => {
@@ -103,6 +103,7 @@ export class Vehicles {
     if (this.timer > 0) return;
     this.timer = 2;
     for (const v of [...this.list]) {
+      if (v.busy) continue;   // out driving
       const c = this.game.getChar(v.ownerId);
       if (!c) { this.remove(v); continue; }
       const home = this.game.town.get(c.homeId);

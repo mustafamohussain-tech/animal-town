@@ -251,6 +251,14 @@ export function actionActs(c, a, o = {}) {
     case 'sleep': return sleepActs(c, false);
     case 'swim': return swimActs(c) || [wait(2, 'idle', { onStart: x => x.say('🤷') })];
     case 'boat': return boatActs(c) || [wait(2, 'idle', { onStart: x => x.say('🤷') })];
+    case 'drive': {
+      // by car (or taxi) to a building: the one named, or somewhere on the other side of town
+      const far = g.town.all.filter(b => b.complete && !b.def.open && dist2d(b.center, pos) > 50);
+      const b = (o.type && g.town.nearest(o.type, pos)) || (far.length ? pick(far) : null);
+      if (!b) return [wait(2, 'idle', { onStart: x => x.say('🤷') })];
+      const s = b.spot('door', c.id);
+      return [call(x => { x.forceRide = o.taxi ? 'taxi' : true; }), goTo(s.x, s.z, { face: s.face }), wait(2, 'idle')];
+    }
     case 'eat': {
       const rest = g.town.nearest('restaurant', pos);
       const l = rest ? eatActs(c, rest) : [];
@@ -538,7 +546,8 @@ function idleRoutine(c) {
   let p;
   const built = town.all.filter(b => b.complete);
   if (built.length && Math.random() < .45) p = pick(built).spot('front', c.id);
-  else p = g.world.randomSpot(c.root.position, 16);
+  // otherwise a stroll along a sidewalk nearby (or a footpath)
+  else p = (g.paths?.list.length && Math.random() < .35 && g.paths.walkSpot(c.root.position)) || g.tiles.walkSpot(c.root.position) || g.world.randomSpot(c.root.position, 16);
   const list = [goTo(p.x + rand(-1.5, 1.5), p.z + rand(-1.5, 1.5)), wait(rand(1.5, 4), 'idle')];
   if (Math.random() < .15) list.push(say(pick(IDLE)));
   return list;

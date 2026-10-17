@@ -62,6 +62,7 @@ const JOBWORDS = {
 const PLACE_JOB = { shop: 'shopkeeper', farm: 'farmer', restaurant: 'chef', police: 'police', firestation: 'firefighter', school: 'teacher', dock: 'fisher', hospital: 'doctor' };
 const JOB_PLACE = Object.fromEntries(Object.entries(PLACE_JOB).map(([p, j]) => [j, p]));
 const ACTIONS = {
+  drive: list('drive,driving,taxi,cab,ride,يسوق,سوق السياره,سواقه,سياقه,تكسي,تاكسي,بالسياره,بسيارته'),
   swim: list('swim,swimming,سباحه,يسبح,اسبح,سبح,يسبحون'),
   boat: list('boat,row,rowing,kayak,canoe,قارب,زورق,تجديف,يجدف,بلم,البلم,بالقارب'),
   car: list('car,cars,سياره,سيارات,سيارته'),
@@ -270,6 +271,7 @@ export function runCommand(game, raw) {
     if (action === 'follow') { game.select(who, true); return game.log(t('following', { name: who.name })); }
     const a = action || 'goto';
     if (a === 'buy' || a === 'goto') return targets.map(c => game.doAction(c, a, { type: building || 'shop', variant })).pop();
+    if (a === 'drive') return targets.map(c => game.doAction(c, a, { type: building, taxi: /taxi|cab|تكسي|تاكسي/.test(text) })).pop();
     return targets.map(c => game.doAction(c, a)).pop();
   }
 

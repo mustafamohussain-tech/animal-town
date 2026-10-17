@@ -12,6 +12,8 @@ import { Events } from './events.js';
 import { BusService } from './bus.js';
 import { Water } from './water.js';
 import { History } from './history.js';
+import { Paths } from './paths.js';
+import { Traffic } from './traffic.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
 import { Character } from './character.js';
@@ -36,6 +38,8 @@ export class Game {
     this.props = new Props(this);
     this.curves = new Curves(this);
     this.water = new Water(this);
+    this.paths = new Paths(this);
+    this.traffic = new Traffic(this);
     this.history = new History(this);
     this.vehicles = new Vehicles(this);
     this.events = new Events(this);
@@ -481,6 +485,7 @@ export class Game {
     this.vehicles.update(dt);
     this.events.update(dt);
     this.water.update(dt);
+    this.traffic.update(dt);
     this.bus.update(dt);
     this.effects.update(dt);
     this.world.update(dt);
@@ -497,6 +502,7 @@ export class Game {
     }
     const grid = this.world.grid;
     for (const c of this.chars) {
+      if (c.inCar) continue;
       const p = c.root.position, cx = Math.floor(p.x / 2), cz = Math.floor(p.z / 2);
       const wa = c.moving ? 1 : SEATED.has(c.pose) ? 0 : .35;
       if (!wa) continue;
@@ -530,7 +536,7 @@ export class Game {
     }
     for (const c of this.chars) {
       const b = c.bld;
-      const hiddenFloor = c.inBus || (b && b.viewFloorMax != null && c.root.position.y > b.viewFloorMax * FH + 1);
+      const hiddenFloor = c.inBus || c.inCar || (b && b.viewFloorMax != null && c.root.position.y > b.viewFloorMax * FH + 1);
       const insideClosed = b && b.complete && !b.isCut && c !== this.selected;
       c.root.visible = !hiddenFloor;
       c.label.visible = !hiddenFloor && !insideClosed;

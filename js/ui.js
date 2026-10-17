@@ -11,9 +11,9 @@ import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
 
-const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['boat', '🚣'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
+const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['boat', '🚣'], ['drive', '🚕'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
-const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
+const TOOL_LIST = [['road', '🛣️'], ['dirt', '🟫'], ['path', '👣'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);

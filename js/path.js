@@ -45,6 +45,8 @@ export class Grid {
     this.n = GN;
     this.block = new Uint16Array(n);
     this.wet = new Uint8Array(n);   // water (see water.js)
+    // how much people dislike walking on a cell: 1 sidewalk / path / building plot, 5 grass, 6 asphalt (see tiles.stampCost)
+    this.cost = new Uint8Array(n).fill(5);
     this.g = new Float32Array(n);
     this.from = new Int32Array(n);
     this.seen = new Uint32Array(n);
@@ -93,6 +95,17 @@ export class Grid {
     return null;
   }
 
+  // straight line that stays free and never crosses cells people like less than both ends (no shortcuts over grass)
+  lineCheap(ax, az, bx, bz) {
+    const ca = this.costAt(ax, az), cb = this.costAt(bx, bz), lim = Math.max(ca, cb);
+    const n = Math.ceil(Math.hypot(bx - ax, bz - az) / .35);
+    for (let s = 1; s <= n; s++) {
+      const x = ax + (bx - ax) * s / n, z = az + (bz - az) * s / n;
+      if (!this.freeAt(x, z) || this.costAt(x, z) > lim) return false;
+    }
+    return true;
+  }
+  costAt(x, z) { const i = this.cell(x), j = this.cell(z); return (i < 0 || j < 0 || i >= GN || j >= GN) ? 5 : this.cost[j * GN + i]; }
   lineFree(ax, az, bx, bz) {
     const n = Math.ceil(Math.hypot(bx - ax, bz - az) / .35);
     for (let s = 1; s <= n; s++) {
@@ -107,49 +120,58 @@ export class Grid {
     const cl = v => Math.min(this.hi, Math.max(this.lo, v));
     let si = cl(this.cell(sx)), sj = cl(this.cell(sz));
     let ti = cl(this.cell(tx)), tj = cl(this.cell(tz));
-    if (!this.free(ti, tj)) { const nf = this.nearestFree(ti, tj); if (!nf) return [target]; [ti, tj] = nf; }
+    // a target inside a wall: stop at the nearest free spot instead of walking into it
+    let end = target;
+    if (!this.free(ti, tj)) { const nf = this.nearestFree(ti, tj); if (!nf) return [{ x: sx, z: sz }]; [ti, tj] = nf; end = { x: this.center(ti), z: this.center(tj) }; }
     if (!this.free(si, sj)) { const nf = this.nearestFree(si, sj, 4); if (nf) [si, sj] = nf; }
-    if (si === ti && sj === tj) return [target];
-    if (this.lineFree(sx, sz, this.center(ti), this.center(tj))) return [{ x: this.center(ti), z: this.center(tj) }, target];
+    if (si === ti && sj === tj) return [end];
+    if (this.lineCheap(sx, sz, this.center(ti), this.center(tj))) return [{ x: this.center(ti), z: this.center(tj) }, end];
 
     const S = ++this.stamp;
     const { g, from, seen, done, heap } = this;
     heap.clear();
     const start = sj * GN + si, goal = tj * GN + ti;
+    // slightly greedy (x1.6) so long walks stay fast with the walking costs
     const h = k => {
       const dx = Math.abs(k % GN - ti), dz = Math.abs(((k / GN) | 0) - tj);
-      return Math.max(dx, dz) + .414 * Math.min(dx, dz);
+      return (Math.max(dx, dz) + .414 * Math.min(dx, dz)) * 1.6;
     };
+    const C = this.cost;
+    let best = start, bestH = Infinity;
     g[start] = 0; seen[start] = S; from[start] = -1;
     heap.push(start, h(start));
     let found = false, iter = 0;
-    while (heap.size && iter++ < 60000) {
+    while (heap.size && iter++ < 150000) {
       const k = heap.pop();
       if (done[k] === S) continue;
       if (k === goal) { found = true; break; }
       done[k] = S;
+      const hk = h(k);
+      if (hk < bestH) { bestH = hk; best = k; }
       const i = k % GN, j = (k / GN) | 0;
       for (const [dx, dz, cost] of DIRS) {
         const ni = i + dx, nj = j + dz;
         if (!this.free(ni, nj)) continue;
         if (dx && dz && (!this.free(i + dx, j) || !this.free(i, j + dz))) continue;
-        const nk = nj * GN + ni, ng = g[k] + cost;
+        const nk = nj * GN + ni, ng = g[k] + cost * C[nk];
         if (seen[nk] !== S || ng < g[nk]) { seen[nk] = S; g[nk] = ng; from[nk] = k; heap.push(nk, ng + h(nk)); }
       }
     }
-    if (!found) return [target];
+    // can't get there: walk as close as possible (never straight through walls)
+    const last = found ? goal : best;
+    if (!found) end = { x: this.center(last % GN), z: this.center((last / GN) | 0) };
 
     const cells = [];
-    for (let k = goal; k !== start && k !== -1; k = from[k]) cells.push(k);
+    for (let k = last; k !== start && k !== -1; k = from[k]) cells.push(k);
     cells.reverse();
-    const pts = [{ x: sx, z: sz }, ...cells.map(k => ({ x: this.center(k % GN), z: this.center((k / GN) | 0) })), target];
+    const pts = [{ x: sx, z: sz }, ...cells.map(k => ({ x: this.center(k % GN), z: this.center((k / GN) | 0) })), end];
 
     // straighten the zig-zag: skip points while there is a clear line of sight
     const out = [];
     let a = 0;
     while (a < pts.length - 1) {
       let b = Math.min(pts.length - 1, a + 40);
-      while (b > a + 1 && !this.lineFree(pts[a].x, pts[a].z, pts[b].x, pts[b].z)) b--;
+      while (b > a + 1 && !this.lineCheap(pts[a].x, pts[a].z, pts[b].x, pts[b].z)) b--;
       out.push(pts[b]);
       a = b;
     }

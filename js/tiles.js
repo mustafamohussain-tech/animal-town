@@ -8,7 +8,7 @@ import { NIGHT, addGlow } from './daynight.js';
 
 const K = (i, j) => i + ',' + j;
 const SW = 1.8, HALF = TILE / 2;
-const ASPHALT = '#5d626b', WALK = '#cfc9bc', LINE = '#f2f2f2';
+const ASPHALT = '#5d626b', WALK = '#cfc9bc', LINE = '#f2f2f2', DIRT = '#b08a5c', TRACK = '#9a774c';
 export const tileOf = v => Math.round(v / TILE);
 
 export class TileMap {
@@ -25,15 +25,56 @@ export class TileMap {
     return r;
   }
   isRoad(i, j) { return !!this.get(i, j)?.road; }
-  isRoadish(i, j) { const r = this.get(i, j); return !!r && (r.road || r.curve > 0); }
+  isRoadish(i, j) { const r = this.get(i, j); return !!r && (r.road || r.dirt || r.curve > 0); }
+  isDirt(i, j) { return !!this.get(i, j)?.dirt; }
+  // cars can drive here: asphalt or dirt road
+  isDrivable(i, j) { const r = this.get(i, j); return !!r && (r.road || r.dirt); }
+  dirtList() { return [...this.tiles.entries()].filter(([, r]) => r.dirt && !r.road).map(([k]) => k.split(',').map(Number)); }
   freeForBuilding(i, j, ignoreId) {
     if (!this.game.world.inLand(i, j)) return false;
     const r = this.get(i, j);
     if (this.game.water?.tileWet(i, j)) return false;
-    return !r || (!r.road && r.curve <= 0 && (r.building == null || r.building === ignoreId));
+    return !r || (!r.road && !r.dirt && r.curve <= 0 && (r.building == null || r.building === ignoreId));
   }
-  claim(i, j, id) { this.rec(i, j).building = id; }
-  release(i, j, id) { const r = this.get(i, j); if (r && r.building === id) r.building = null; }
+  claim(i, j, id) { this.rec(i, j).building = id; this.stampCost(i, j); }
+  release(i, j, id) { const r = this.get(i, j); if (r && r.building === id) { r.building = null; this.stampCost(i, j); } }
+  // walking costs of the cells of one tile (path.js): people keep to sidewalks, paths and building plots,
+  // cross roads at the zebra crossings, and only walk on grass when there is no other way
+  stampCost(i, j) {
+    const grid = this.game.world.grid, C = grid.cost, n = grid.n;
+    const i0 = grid.cell(i * TILE - HALF), j0 = grid.cell(j * TILE - HALF);
+    const r = this.get(i, j);
+    const road = !!r?.road, plot = r?.building != null, dirt = !!r?.dirt;
+    const L = r?.links;
+    const N = road && (this.isRoad(i, j - 1) || L?.n > 0), S = road && (this.isRoad(i, j + 1) || L?.s > 0), E = road && (this.isRoad(i + 1, j) || L?.e > 0), W = road && (this.isRoad(i - 1, j) || L?.w > 0);
+    const junction = road && N + S + E + W >= 3, band = HALF - SW - .2;
+    for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
+      const ci = i0 + a, cj = j0 + b;
+      if (ci < 0 || cj < 0 || ci >= n || cj >= n) continue;
+      let c = 5;
+      if (road) {
+        const lx = grid.center(ci) - i * TILE, lz = grid.center(cj) - j * TILE;
+        const walk = (!N && lz < -band) || (!S && lz > band) || (!E && lx > band) || (!W && lx < -band) ||
+          (Math.abs(lx) > band && Math.abs(lz) > band);
+        c = walk ? 1 : junction && (Math.abs(lx) > HALF - 2.6 || Math.abs(lz) > HALF - 2.6) ? 2 : 6;
+      } else if (plot || dirt) c = 1;
+      C[cj * n + ci] = c;
+    }
+    // curved roads and footpaths drawn over this tile
+    this.game.curves?.stampCost?.(i, j);
+    this.game.paths?.stampCost?.(i, j);
+  }
+  // a spot on a sidewalk near p (where people stroll), or null when there are no roads around
+  walkSpot(p, r = 3) {
+    const ti = tileOf(p.x), tj = tileOf(p.z), out = [];
+    for (let a = ti - r; a <= ti + r; a++) for (let b = tj - r; b <= tj + r; b++) {
+      if (!this.isRoad(a, b)) continue;
+      for (const [di, dj] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) if (!this.isRoad(a + di, b + dj)) out.push([a, b, di, dj]);
+    }
+    if (!out.length) return null;
+    const [a, b, di, dj] = out[Math.floor(Math.random() * out.length)], along = (Math.random() - .5) * (TILE - 3), off = HALF - .9;
+    return { x: a * TILE + (di ? di * off : along), z: b * TILE + (dj ? dj * off : along) };
+  }
   // is this point on the driving part of a road (not the sidewalk, not grass)?
   onAsphalt(x, z) {
     const a = tileOf(x), b = tileOf(z);
@@ -56,12 +97,39 @@ export class TileMap {
     if (r.road === on) return false;
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
-    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuild(a, c); // diagonals too (wide areas)
+    for (let a = i - 2; a <= i + 2; a++) for (let c = j - 2; c <= j + 2; c++) this.rebuild(a, c); // wide roads look at their neighbours' neighbours
     this.game.water?.roadChanged(i, j);   // roads over water are walkable (bridges), no reeds on the road
     return true;
   }
 
+  // dirt road tiles (cheaper look, no sidewalks; people walk on them, cars drive on them)
+  setDirt(i, j, on) {
+    if (!this.game.world.inLand(i, j)) return false;
+    const r = this.rec(i, j);
+    if (on && (r.building != null || r.road)) return false;
+    if (!!r.dirt === on) return false;
+    r.dirt = on;
+    if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
+    for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuild(a, c);
+    this.game.water?.roadChanged(i, j);
+    return true;
+  }
+  buildDirt(i, j, g) {
+    const D = (a, b) => this.isDrivable(a, b);
+    const n = D(i, j - 1), s = D(i, j + 1), e = D(i + 1, j), w = D(i - 1, j);
+    // packed earth, a bit narrower than the tile where nothing joins, with two wheel tracks
+    const m = 1.4;
+    const x0 = w ? -HALF : -HALF + m, x1 = e ? HALF : HALF - m, z0 = n ? -HALF : -HALF + m, z1 = s ? HALF : HALF - m;
+    box(x1 - x0, .05, z1 - z0, DIRT, (x0 + x1) / 2, .025, (z0 + z1) / 2, g);
+    const along = (n || s) && !(e || w) ? 'z' : (e || w) && !(n || s) ? 'x' : null;
+    for (const o of [-2.2, 2.2]) {
+      if (along === 'z') box(.9, .01, z1 - z0, TRACK, o, .052, (z0 + z1) / 2, g);
+      if (along === 'x') box(x1 - x0, .01, .9, TRACK, (x0 + x1) / 2, .052, o, g);
+    }
+    for (let k = 0; k < 6; k++) box(.2, .08, .2, '#8d8a84', x0 + Math.random() * (x1 - x0), .06, z0 + Math.random() * (z1 - z0), g);
+  }
   rebuild(i, j) {
+    this.stampCost(i, j);
     const k = K(i, j);
     const old = this.meshes.get(k);
     if (old) {
@@ -71,9 +139,21 @@ export class TileMap {
     }
     const src = this.lampSrc.get(k);
     if (src) { this.game.daynight.removeSource(src); this.lampSrc.delete(k); }
-    if (!this.isRoad(i, j)) return;
+    if (!this.isRoad(i, j)) {
+      if (this.isDirt(i, j)) {
+        const g = new THREE.Group();
+        g.position.set(i * TILE, 0, j * TILE);
+        this.buildDirt(i, j, g);
+        mergeStatic(g);
+        shadows(g);
+        this.game.scene.add(g);
+        this.meshes.set(k, g);
+      }
+      return;
+    }
 
-    const n = this.isRoad(i, j - 1), s = this.isRoad(i, j + 1), e = this.isRoad(i + 1, j), w = this.isRoad(i - 1, j);
+    const L = this.get(i, j)?.links;
+    const n = this.isRoad(i, j - 1) || L?.n > 0, s = this.isRoad(i, j + 1) || L?.s > 0, e = this.isRoad(i + 1, j) || L?.e > 0, w = this.isRoad(i - 1, j) || L?.w > 0;
     const g = new THREE.Group();
     g.position.set(i * TILE, 0, j * TILE);
     box(TILE, .06, TILE, ASPHALT, 0, .03, 0, g);
@@ -112,6 +192,20 @@ export class TileMap {
       if (s) dashZ(.3, HALF);
       if (e) dashX(.3, HALF);
       if (w) dashX(-HALF, -.3);
+    } else {
+      // roads drawn side by side = one wide road with several lanes: which way does it run?
+      const run = (dx, dz) => { let k = 1; while (k <= 8 && R(i + dx * k, j + dz * k)) k++; return k - 1; };
+      const hr = 1 + run(1, 0) + run(-1, 0), vr = 1 + run(0, 1) + run(0, -1);
+      // a wide road is at most 4 tiles across; long in both directions = a crossing
+      if (hr >= 3 && vr <= 4 && hr > vr) {
+        // runs east-west: a dashed line in the middle of every lane pair, a solid line between the tiles
+        dashX(-HALF, HALF - .5);
+        if (n) box(TILE, .012, .16, LINE, 0, .066, -HALF, g);
+      } else if (vr >= 3 && hr <= 4 && vr > hr) {
+        dashZ(-HALF, HALF - .5);
+        if (w) box(.16, .012, TILE, LINE, -HALF, .066, 0, g);
+      }
+      // (where two wide roads cross, the middle stays plain asphalt)
     }
 
     // over water the road becomes a bridge: railings on the open sides
@@ -150,7 +244,7 @@ export class TileMap {
   }
 
   clear() {
-    for (const k of [...this.meshes.keys()]) { const [i, j] = k.split(',').map(Number); this.get(i, j).road = false; this.rebuild(i, j); }
+    for (const k of [...this.meshes.keys()]) { const [i, j] = k.split(',').map(Number); const r = this.get(i, j); r.road = false; r.dirt = false; this.rebuild(i, j); }
     this.tiles.clear();
   }
 }
