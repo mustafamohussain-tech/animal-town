@@ -10,6 +10,8 @@ import { Vehicles, CAR_TYPES } from './vehicles.js';
 import { foundedAt } from './save.js';
 import { Events } from './events.js';
 import { BusService } from './bus.js';
+import { Water } from './water.js';
+import { History } from './history.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
 import { Character } from './character.js';
@@ -33,6 +35,8 @@ export class Game {
     this.tiles = new TileMap(this);
     this.props = new Props(this);
     this.curves = new Curves(this);
+    this.water = new Water(this);
+    this.history = new History(this);
     this.vehicles = new Vehicles(this);
     this.events = new Events(this);
     this.bus = new BusService(this);
@@ -249,7 +253,7 @@ export class Game {
       this.emit('change');
       return this.announce(t('nowJob', { name: x.name, job: this.jobLabel(job), emoji: JOBS[job].emoji }));
     };
-    if (!place || this.town.has(place)) {
+    if (!place || this.town.has(place) || (job === 'fisher' && this.water.list.length)) {
       c.command([wait(1.6, 'cheer', { onStart: x => x.say(JOBS[job].emoji) })]);
       return done(c);
     }
@@ -300,11 +304,26 @@ export class Game {
       if (o) { b.ownerId = o.id; this.moveIn(o, b); }
     }
     if (c && this.chars.includes(c)) c.command([buildAct(b), wait(2, 'cheer', { onStart: x => x.say('🎉') })]);
+    let ref = b;
+    this.history.push(b.displayName(), () => this.demolish(ref), () => { ref = this.restoreBuilding(ref.toJSON()); });
     this.emit('change');
     return this.log(t('building1', { name: c?.name || '', b: b.displayName() }));
   }
+  // put a building back exactly as it was (undo)
+  restoreBuilding(j) {
+    const b = this.town.create(j.spec, j.i, j.j, j.rot, { id: j.id, progress: j.progress, startedAt: j.startedAt, duration: j.duration, ownerId: j.ownerId, builtBy: j.builtBy, residents: j.residents, crops: j.crops });
+    for (const id of b.residents) { const c = this.getChar(id); if (c && !this.town.get(c.homeId)) c.homeId = b.id; }
+    this.emit('change');
+    return b;
+  }
   demolish(b) {
+    if (!this.history.busy) {
+      const j = b.toJSON();
+      let ref = null;
+      this.history.push(t('h_demolish', { b: b.displayName() }), () => { ref = this.restoreBuilding(j); }, () => ref && this.demolish(ref));
+    }
     for (const c of this.chars) {
+      if (c.pendingJob?.buildingId === b.id) c.pendingJob = null;
       if (c.homeId === b.id) c.homeId = null;
       if (c.workplaceId === b.id) c.workplaceId = null;
       if (c.upstairs === b) { c.upstairs = null; c.root.position.y = 0; }
@@ -461,6 +480,7 @@ export class Game {
     this.props.update(dt, tm);
     this.vehicles.update(dt);
     this.events.update(dt);
+    this.water.update(dt);
     this.bus.update(dt);
     this.effects.update(dt);
     this.world.update(dt);

@@ -5,8 +5,9 @@ import * as THREE from 'three';
 import { TILE } from './path.js';
 import { tileOf } from './tiles.js';
 import { buildCurveMesh } from './curves.js';
+import { previewWater, RIVER_W } from './water.js';
 import { PROP_TYPES } from './props.js';
-import { t } from './i18n.js';
+import { t, t as i18n } from './i18n.js';
 import { canPlace, roadInFront, footprint, makeGhostModel, GHOST_OK, GHOST_BAD } from './buildings.js';
 
 const PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -27,6 +28,7 @@ export class Editor {
     this.cursor.position.y = .25;
     this.cursor.visible = false;
     game.scene.add(this.cursor);
+    this.riverWidth = RIVER_W.medium;
     this.marker = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.TorusGeometry(.9, .12, 8, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffcf3f' }));
     ring.position.y = .2;
@@ -42,12 +44,15 @@ export class Editor {
     el.addEventListener('pointermove', e => this.move(e));
     addEventListener('pointerup', () => this.up());
     this.linePool = [];
-    el.addEventListener('dblclick', () => { if (this.tool === 'curve' || this.tool === 'bridge') this.finishCurve(); });
+    el.addEventListener('dblclick', () => { if (this.pathTool) this.finishCurve(); });
     el.addEventListener('contextmenu', e => { if (this.tool) e.preventDefault(); });
     addEventListener('keydown', e => this.key(e));
   }
 
   // ---------- switching tools ----------
+  // tools drawn with points: curved road, bridge, river, lake
+  get pathTool() { return ['curve', 'bridge', 'river', 'lake'].includes(this.tool); }
+  get waterTool() { return this.tool === 'river' || this.tool === 'lake'; }
   setTool(tool, opts = {}) {
     this.clearPreview();
     this.pts = [];
@@ -92,8 +97,9 @@ export class Editor {
     if (!p) return;
     const t = this.tool, g = this.game;
     if (t === 'road' || t === 'erase') { this.lineStart = [tileOf(p.x), tileOf(p.z)]; this.lineEnd = this.lineStart; this.showLine(); return; }
-    if (t === 'curve' || t === 'bridge') {
-      const q = this.snap(p);
+    if (this.pathTool) {
+      const q = this.waterTool ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p);
+      if (this.waterTool && !g.world.inLand(tileOf(q.x), tileOf(q.z))) return;
       this.pts.push(q);
       const dot = new THREE.Mesh(new THREE.SphereGeometry(.5), new THREE.MeshBasicMaterial({ color: '#ffcf3f' }));
       dot.position.set(q.x, .5, q.z);
@@ -104,8 +110,12 @@ export class Editor {
     if (PROP_TYPES[t]) {
       const s = this.propSpot(t, p);
       if (!s.ok) { if (s.why) g.log(s.why); return; }
-      if (t === 'busstop') for (const old of g.props.list.filter(q => q.type === 'busstop')) g.props.remove(old); // only one bus stop
-      g.props.add(t, s.x, s.z, s.rot);
+      const olds = t === 'busstop' ? g.props.list.filter(q => q.type === 'busstop').map(q => ({ ...q })) : [];
+      for (const o of olds) g.props.remove(g.props.list.find(q => q.id === o.id)); // only one bus stop
+      let ref = g.props.add(t, s.x, s.z, s.rot);
+      g.history.push(i18n('tool_' + t),
+        () => { g.props.remove(ref); for (const o of olds) g.props.add(o.type, o.x, o.z, o.rot, { id: o.id, scale: o.scale }); },
+        () => { for (const o of olds) { const q = g.props.list.find(x => x.id === o.id); if (q) g.props.remove(q); } ref = g.props.add(t, s.x, s.z, s.rot, { scale: ref.scale }); });
       g.emit('change');
       return;
     }
@@ -136,7 +146,7 @@ export class Editor {
         this.cursor.position.set(i * TILE, .25, j * TILE);
         this.cursor.material.color.set(t === 'road' ? '#ffcf3f' : '#ff3b30');
       }
-    } else if (t === 'curve' || t === 'bridge') {
+    } else if (this.pathTool) {
       this.updateCurve(p);
     } else if (PROP_TYPES[t]) {
       // shows where it will really stand (snapped to the sidewalk / junction corner), red = not allowed here
@@ -229,17 +239,39 @@ export class Editor {
   hideLine() { this.linePool.forEach(m => { m.visible = false; }); }
   up() {
     if (!this.lineStart) return;
-    const g = this.game, tiles = this.lineTiles(), single = tiles.length === 1;
+    const g = this.game, tiles = this.lineTiles(), single = tiles.length === 1, on = this.tool === 'road', changed = [];
     for (const [i, j] of tiles) {
-      if (this.tool === 'road') g.tiles.setRoad(i, j, true);
-      else if (g.tiles.isRoad(i, j)) g.tiles.setRoad(i, j, false);
+      if (on) { if (g.tiles.setRoad(i, j, true)) changed.push([i, j]); }
+      else if (g.tiles.isRoad(i, j)) { if (g.tiles.setRoad(i, j, false)) changed.push([i, j]); }
       else if (single) {
-        // a single click on something that isn't a road: remove a curved road / lamp / tree there
+        // a single click on something that isn't a road: remove a curved road / water / lamp / tree there
         const x = i * TILE, z = j * TILE, p = this.lastPoint || { x, z };
         const cv = g.curves.nearest(p.x, p.z, 6);
-        if (cv) g.curves.remove(cv);
-        else { const pr = g.props.nearest(p.x, p.z, 2.5); if (pr) g.props.remove(pr); }
+        const wt = !cv && g.water.list.find(w => g.water.wetIn(w, p.x, p.z, 1));
+        if (cv) {
+          let ref = cv;
+          g.curves.remove(cv);
+          g.history.push(i18n(cv.bridge ? 'tool_bridge' : 'tool_curve'), () => { ref = g.curves.add(ref.pts, ref.bridge, { id: ref.id }); }, () => g.curves.remove(ref));
+        } else if (wt) {
+          let ref = wt;
+          const d = { kind: wt.kind, pts: wt.pts, width: wt.width };
+          g.water.remove(wt);
+          g.history.push(i18n('tool_' + wt.kind), () => { ref = g.water.add(d, { id: ref.id }); }, () => g.water.remove(ref));
+        } else {
+          const pr = g.props.nearest(p.x, p.z, 2.5);
+          if (pr) {
+            const o = { ...pr };
+            let ref = pr;
+            g.props.remove(pr);
+            g.history.push(i18n('tool_' + o.type), () => { ref = g.props.add(o.type, o.x, o.z, o.rot, { id: o.id, natural: o.natural, scale: o.scale }); }, () => g.props.remove(ref));
+          }
+        }
       }
+    }
+    if (changed.length) {
+      g.history.push(i18n(on ? 'h_road' : 'h_erase', { n: changed.length }),
+        () => changed.forEach(([i, j]) => g.tiles.setRoad(i, j, !on)),
+        () => changed.forEach(([i, j]) => g.tiles.setRoad(i, j, on)));
     }
     this.lineStart = null;
     this.hideLine();
@@ -281,15 +313,32 @@ export class Editor {
   updateCurve(p) {
     if (this.curvePreview) this.game.scene.remove(this.curvePreview);
     const pts = [...this.pts];
-    if (p) pts.push(this.snap(p));
-    this.curvePreview = buildCurveMesh(pts, this.tool === 'bridge', true);
+    if (p) pts.push(this.waterTool ? { x: Math.round(p.x), z: Math.round(p.z) } : this.snap(p));
+    this.curvePreview = this.waterTool ? previewWater(this.tool, pts, this.riverWidth) : buildCurveMesh(pts, this.tool === 'bridge', true);
     this.game.scene.add(this.curvePreview);
   }
   finishCurve() {
+    const g = this.game, tool = this.tool;
     const pts = this.pts.filter((q, k, a) => k === 0 || Math.hypot(q.x - a[k - 1].x, q.z - a[k - 1].z) > 1);
-    if (pts.length >= 2) { this.game.curves.add(pts, this.tool === 'bridge'); this.game.emit('change'); }
-    const t = this.tool;
-    this.setTool(t); // ready for the next one
+    if (this.waterTool) {
+      if (pts.length >= (tool === 'lake' ? 3 : 2)) {
+        const d = { kind: tool, pts, width: this.riverWidth };
+        const w = g.water.add(d);
+        // water may not cover buildings
+        const hit = w && [...g.tiles.tiles.entries()].some(([k, r]) => r.building != null && g.water.tileWet(...k.split(',').map(Number)));
+        if (hit) { g.water.remove(w); g.log(i18n('waterOnBuilding')); }
+        else if (w) {
+          let ref = w;
+          g.history.push(i18n('tool_' + tool), () => g.water.remove(ref), () => { ref = g.water.add(d, { id: ref.id }); });
+          g.emit('change');
+        }
+      } else g.log(i18n(tool === 'lake' ? 'needLakePts' : 'needRiverPts'));
+    } else if (pts.length >= 2) {
+      let ref = g.curves.add(pts, tool === 'bridge');
+      g.history.push(i18n('tool_' + tool), () => g.curves.remove(ref), () => { ref = g.curves.add(ref.pts, ref.bridge, { id: ref.id }); });
+      g.emit('change');
+    }
+    this.setTool(tool); // ready for the next one
   }
 
   // building ghost: snap to tiles, turn towards a road, green = OK / red = blocked
@@ -319,9 +368,9 @@ export class Editor {
   key(e) {
     if (!this.tool || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
     if (e.key === 'Escape') {
-      if ((this.tool === 'curve' || this.tool === 'bridge') && this.pts.length) { this.setTool(this.tool); return; }
+      if (this.pathTool && this.pts.length) { this.setTool(this.tool); return; }
       this.setTool(null);
-    } else if (e.key === 'Enter') { if (this.tool === 'curve' || this.tool === 'bridge') this.finishCurve(); }
+    } else if (e.key === 'Enter') { if (this.pathTool) this.finishCurve(); }
     else if (e.key === 'Backspace') { this.pts.pop(); this.dots.children.at(-1) && this.dots.remove(this.dots.children.at(-1)); this.updateCurve(); }
     else if (e.key.toLowerCase() === 'r') {
       this.rot = (this.rot + 1) % 4;

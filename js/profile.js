@@ -21,6 +21,7 @@ export { cleanHandle };
 export function statusText(c) {
   const g = c.game, n = c.activity?.name;
   if (c.hurt) return t('stat_patient');
+  if (c.swimming) return t('stat_swim');
   if (n === 'build') return t('stat_build');
   if (n === 'fire') return t('stat_fire');
   if (n === 'sleep' || c.pose === 'sleep') return t('stat_sleep');

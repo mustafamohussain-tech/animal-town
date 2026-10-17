@@ -100,6 +100,11 @@
     <section class="card" id="sel-card"></section>
       </div>
       <div class="pane" data-pane="build">
+    <section class="card undo-bar">
+      <button id="btn-undo">↩️ <span data-i18n="undo"></span></button>
+      <span id="undo-what" class="undo-what" dir="auto"></span>
+      <button id="btn-redo">↪️ <span data-i18n="redo"></span></button>
+    </section>
     <section class="card">
       <h2>🏗️ <span data-i18n="buildMenu"></span></h2>
       <div id="b-types" class="grid four"></div>
@@ -118,6 +123,7 @@
     <section class="card">
       <h2>🛣️ <span data-i18n="tools"></span></h2>
       <div id="tool-grid" class="grid four"></div>
+      <div id="tool-extra"></div>
       <p id="tool-hint" class="hint"></p>
       <button id="tool-done" class="primary wide">✅ <span data-i18n="toolDone"></span></button>
     </section>

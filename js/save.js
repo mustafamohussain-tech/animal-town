@@ -35,6 +35,7 @@ export function serialize(game) {
     paused: game.daynight.paused,
     roads: game.tiles.roadList(),
     curves: game.curves.toJSON(),
+    water: game.water.toJSON(),
     props: game.props.toJSON(),
     buildings: game.town.all.map(b => b.toJSON()),
     chars: game.chars.map(c => c.toJSON()),
@@ -67,6 +68,7 @@ export function loadData(game, data, { keepLang = false } = {}) {
   const safe = (what, fn) => { try { fn(); } catch (e) { console.warn('skip', what, e); } };
   for (const [i, j] of data.roads || []) safe('road', () => game.tiles.setRoad(i, j, true));
   for (const c of data.curves || []) safe('curve', () => game.curves.add(c.pts, c.bridge, { id: c.id }));
+  for (const w of data.water || []) safe('water', () => game.water.add(w, { id: w.id }));
   for (const b of data.buildings || []) {
     safe('building', () => game.town.create(b.spec, b.i, b.j, b.rot, { id: b.id, progress: b.progress, startedAt: b.startedAt, duration: b.duration, ownerId: b.ownerId, builtBy: b.builtBy, residents: b.residents, crops: b.crops }));
   }

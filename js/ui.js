@@ -8,11 +8,12 @@ import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
 import { EVENT_ORDER } from './events.js';
+import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
 
-const ACTION_LIST = [['car', '🚗'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
+const ACTION_LIST = [['car', '🚗'], ['swim', '🏊'], ['dance', '💃'], ['wave', '👋'], ['jump', '🤸'], ['cheer', '🎉'], ['sit', '🪑'], ['sleep', '😴'],
   ['eat', '🍔'], ['buy', '🛍️'], ['chat', '💬'], ['home', '🏠'], ['hurt', '🤕'], ['heal', '💚'], ['quit', '🚪']];
-const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
+const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'], ['river', '🏞️'], ['lake', '🌊'], ['lamp', '💡'], ['traffic', '🚦'], ['tree', '🌳'], ['bench', '🪑'], ['flowers', '🌷'], ['busstop', '🚏'], ['erase', '🧽']];
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);
@@ -102,6 +103,10 @@ export class UI {
     $('d-new').onclick = () => this.openDesigner({});
     $('d-photo').onclick = () => this.openDesigner({}, true);
     $('tool-done').onclick = () => game.editor.setTool(null);
+    $('btn-undo').onclick = () => game.history.undo();
+    $('btn-redo').onclick = () => game.history.redo();
+    game.on('history', () => this.renderHistory());
+    this.renderHistory();
     $('time-range').oninput = e => game.setHour(+e.target.value);
     $('btn-pause').onclick = () => { game.daynight.setPaused(!game.daynight.paused); this.renderTime(); };
     $('sel-cycle').onchange = e => game.daynight.setCycle(+e.target.value);
@@ -140,6 +145,12 @@ export class UI {
       if (!g.editor.tool && g.director.mode !== 'free') g.director.setMode('free');
       else if (!g.editor.tool) g.select(null);
       return;
+    }
+    // Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo
+    if ((e.ctrlKey || e.metaKey) && !typing && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); g.history.undo(); return; }
+      if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); g.history.redo(); return; }
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || $('designer').open) return;
     const k = e.key.toLowerCase();
@@ -672,6 +683,28 @@ export class UI {
     const tool = g.tool;
     $('tool-hint').textContent = !tool ? '' : tool === 'place' ? t('placeHint') : t('hint_' + (['lamp', 'traffic', 'tree', 'bench', 'flowers', 'busstop'].includes(tool) ? 'prop' : tool));
     $('tool-done').style.display = tool ? '' : 'none';
+    // river width
+    const ex = $('tool-extra');
+    ex.textContent = '';
+    if (tool === 'river') {
+      ex.appendChild(el('h3', null, t('riverWidth')));
+      const row = el('div', 'chips');
+      for (const [k, w] of Object.entries(RIVER_W)) {
+        const b = el('button', 'chip-btn' + (g.riverWidth === w ? ' on' : ''), t('rw_' + k));
+        b.onclick = () => { g.riverWidth = w; g.updateCurve(); this.renderTools(); };
+        row.appendChild(b);
+      }
+      ex.appendChild(row);
+    }
+  }
+  // ---------- undo / redo ----------
+  renderHistory() {
+    const h = this.game.history;
+    $('btn-undo').disabled = !h.done.length;
+    $('btn-redo').disabled = !h.undone.length;
+    $('btn-undo').title = h.nextUndo ? t('undo') + ': ' + h.nextUndo : '';
+    $('btn-redo').title = h.nextRedo ? t('redo') + ': ' + h.nextRedo : '';
+    $('undo-what').textContent = h.nextUndo ? '↩️ ' + h.nextUndo : t('nothingUndo');
   }
 
   // ---------- camera ----------
@@ -799,7 +832,7 @@ export class UI {
     this.selJob.textContent = `${t('an_' + c.animal)} · ${JOBS[c.job].emoji} ${t('job_' + c.job)}`;
     for (const j of JOB_ORDER) {
       const btn = this.jobBtns[j], place = JOBS[j].place;
-      const locked = !!place && !g.town.has(place);
+      const locked = !!place && !g.town.has(place) && !(j === 'fisher' && g.water.list.length);
       btn.classList.toggle('on', c.job === j);
       btn.classList.toggle('locked', locked);
       btn.title = locked ? t('needs', { b: t('b_' + place) }) : '';

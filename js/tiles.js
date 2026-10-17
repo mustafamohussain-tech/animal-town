@@ -29,6 +29,7 @@ export class TileMap {
   freeForBuilding(i, j, ignoreId) {
     if (!this.game.world.inLand(i, j)) return false;
     const r = this.get(i, j);
+    if (this.game.water?.tileWet(i, j)) return false;
     return !r || (!r.road && r.curve <= 0 && (r.building == null || r.building === ignoreId));
   }
   claim(i, j, id) { this.rec(i, j).building = id; }
@@ -56,6 +57,7 @@ export class TileMap {
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
     for (let a = i - 1; a <= i + 1; a++) for (let c = j - 1; c <= j + 1; c++) this.rebuild(a, c); // diagonals too (wide areas)
+    this.game.water?.roadChanged(i, j);   // roads over water are walkable (bridges), no reeds on the road
     return true;
   }
 
@@ -112,6 +114,18 @@ export class TileMap {
       if (w) dashX(-HALF, -.3);
     }
 
+    // over water the road becomes a bridge: railings on the open sides
+    if (this.game.water?.tileWet(i, j, 0)) {
+      const R = HALF - .2;
+      const rail = (alongX, off) => {
+        if (alongX) { box(TILE, .14, .14, '#d6d0c4', 0, 1.05, off, g); for (let x = -HALF + .4; x <= HALF; x += 2) box(.16, 1.05, .16, '#bdb7ab', x, .52, off, g); }
+        else { box(.14, .14, TILE, '#d6d0c4', off, 1.05, 0, g); for (let z = -HALF + .4; z <= HALF; z += 2) box(.16, 1.05, .16, '#bdb7ab', off, .52, z, g); }
+      };
+      if (!n) rail(true, -R);
+      if (!s) rail(true, R);
+      if (!e) rail(false, R);
+      if (!w) rail(false, -R);
+    }
     // a street lamp on every other tile, standing on a sidewalk
     if (((i + j) & 1) === 0) {
       const side = !s ? 's' : !n ? 'n' : !e ? 'e' : !w ? 'w' : null;

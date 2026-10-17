@@ -42,7 +42,9 @@ const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -
 export class Grid {
   constructor() {
     const n = GN * GN;
+    this.n = GN;
     this.block = new Uint16Array(n);
+    this.wet = new Uint8Array(n);   // water (see water.js)
     this.g = new Float32Array(n);
     this.from = new Int32Array(n);
     this.seen = new Uint32Array(n);
@@ -60,7 +62,7 @@ export class Grid {
   cell(v) { return Math.floor(v - GMIN); }
   center(i) { return GMIN + i + .5; }
   ok(i, j) { return i >= this.lo && j >= this.lo && i <= this.hi && j <= this.hi; }
-  free(i, j) { return this.ok(i, j) && this.block[j * GN + i] === 0; }
+  free(i, j) { const k = j * GN + i; return this.ok(i, j) && this.block[k] === 0 && !this.wet[k]; }
   freeAt(x, z) { return this.free(this.cell(x), this.cell(z)); }
 
   // block (+1) or unblock (-1) every cell whose centre lies inside the rectangle

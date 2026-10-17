@@ -377,6 +377,13 @@ export class Character {
           P.armRx = -2.1 + Math.sin(tt * 3) * .15; P.armRz = .35; break;
         case 'hurt':
           P.armRx = -2.5; P.armRz = .45; P.headRz = .15; P.bodyRx = .08; break;
+        case 'swim': {
+          // only head and shoulders above the water (the rest is under the ground line)
+          const s = Math.sin(tt * 4);
+          P.bodyY = -1.05; P.bodyRx = .45; P.headRx = -.4;
+          P.armRx = -1.7 + s * 1.3; P.armLx = -1.7 - s * 1.3; P.armRz = -.35; P.armLz = .35;
+          P.legL = s * .3; P.legR = -s * .3; break;
+        }
         case 'sleep': case 'lie': case 'sleepGround':
           P.bodyRx = -1.5; P.bodyY = .32; P.armRz = -.1; P.armLz = .1; break;
         default:

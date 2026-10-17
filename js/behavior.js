@@ -247,6 +247,7 @@ export function actionActs(c, a, o = {}) {
       return l.length ? l : [wait(10, 'sitGround')];
     }
     case 'sleep': return sleepActs(c, false);
+    case 'swim': return swimActs(c) || [wait(2, 'idle', { onStart: x => x.say('🤷') })];
     case 'eat': {
       const rest = g.town.nearest('restaurant', pos);
       const l = rest ? eatActs(c, rest) : [];
@@ -280,6 +281,59 @@ export function actionActs(c, a, o = {}) {
   return null;
 }
 
+// ---------- water: fishing from the bank / pier, swimming in a lake ----------
+export function waterFishActs(c) {
+  const g = c.game, w = g.water.nearest(c.root.position);
+  if (!w) return null;
+  const s = w.pier && Math.random() < .35 ? w.pier : g.water.shoreSpot(c.root.position, w);
+  return [goTo(s.x, s.z, { face: s.face }), wait(rand(6, 10), 'fish', {
+    face: s.face, tool: 'rod',
+    onEnd: (x, done) => { if (done) { g.effects.emit('splash', s.bob, 10); x.say(pick(['🐟', '🐠', '🎣', '🐡', '👢']), 2); } },
+  }), wait(1.5, 'cheer', { tool: 'fish' })];
+}
+export function swimActs(c) {
+  const g = c.game, w = g.water.nearest(c.root.position, 'lake');
+  if (!w) return null;
+  const sh = g.water.shoreSpot(c.root.position, w);
+  return [goTo(sh.x, sh.z), swimAct(w, sh, rand(16, 26))];
+}
+// a few laps on the lake, then out again where they went in
+function swimAct(w, sh, sec) {
+  let left = sec, k = 0, back = false;
+  return {
+    name: 'swim',
+    start(c) {
+      left = sec; back = false;
+      c.pose = 'swim';
+      c.swimming = true;
+      c.say('🏊', 2);
+      const p = c.root.position;
+      let bd = Infinity;
+      w.loop.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd) { bd = d; k = i; } });
+      c.game.effects.emit('splash', { x: p.x, y: .2, z: p.z }, 10);
+    },
+    update(c, dt) {
+      left -= dt;
+      if (left <= 0) back = true;
+      const tg = back ? sh : w.loop[k], p = c.root.position;
+      const dx = tg.x - p.x, dz = tg.z - p.z, d = Math.hypot(dx, dz);
+      if (d < .6) { if (back) return true; k = (k + 1) % w.loop.length; return false; }
+      const s = Math.min(d, 1.7 * dt);
+      p.x += dx / d * s;
+      p.z += dz / d * s;
+      c.faceAngle = Math.atan2(dx, dz);
+      if (Math.random() < dt * 1.5) c.game.effects.emit('splash', { x: p.x, y: .15, z: p.z }, 3);
+      return false;
+    },
+    end(c) {
+      c.swimming = false;
+      c.pose = 'idle';
+      c.root.position.set(sh.x, 0, sh.z);
+      c.say(pick(['😎', '💦', '🥶']), 2);
+    },
+  };
+}
+
 // ---------- the "brain": what to do when nobody gives orders ----------
 export function brain(c) {
   const g = c.game;
@@ -296,6 +350,8 @@ export function brain(c) {
   } else if (c.job !== 'none' && !(g.daynight.isNight && !NIGHT_SHIFT.includes(c.job))) {
     const wp = g.workplaceFor(c);
     if (wp) { const l = jobRoutine(c, wp); if (l.length) return routine(l, 'work'); }
+    // fishers without a fishing pond fish in the river or lake
+    else if (c.job === 'fisher' && g.water.list.length) { const l = waterFishActs(c); if (l) return routine(l, 'work'); }
   }
   return routine(idleRoutine(c), 'idle');
 }
@@ -394,6 +450,10 @@ function idleRoutine(c) {
   if (r < .18) {
     const o = g.nearbyIdle(c, 12);
     if (o) { o.command([chatAct(c, false)], false); return [chatAct(o, true)]; }
+  }
+  if (!night && g.water.list.length && Math.random() < .09) {
+    const l = Math.random() < .55 ? swimActs(c) : waterFishActs(c);
+    if (l) return l;
   }
   if (!night) {
     if (r < .28) { const shop = town.randomOf('shop'); if (shop) { const l = buyActs(c, shop); if (l.length) return l; } }
