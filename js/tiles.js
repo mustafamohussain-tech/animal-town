@@ -39,8 +39,14 @@ export class TileMap {
     if (this.game.water?.tileWet(i, j)) return false;
     return !r || (!r.road && !r.dirt && r.curve <= 0 && (r.building == null || r.building === ignoreId));
   }
-  claim(i, j, id) { this.rec(i, j).building = id; this.stampCost(i, j); }
-  release(i, j, id) { const r = this.get(i, j); if (r && r.building === id) { r.building = null; this.stampCost(i, j); } }
+  claim(i, j, id) { this.rec(i, j).building = id; this.stampCost(i, j); this.refreshAround(i, j); }
+  release(i, j, id) { const r = this.get(i, j); if (r && r.building === id) { r.building = null; this.stampCost(i, j); this.refreshAround(i, j); } }
+  // street trees / benches / lamps next to a building move away from its front (its sign stays visible)
+  refreshAround(i, j) {
+    if (this.loading) return;
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.isRoad(i + a, j + b)) this.rebuild(i + a, j + b);
+  }
+  hasBuilding(i, j) { return this.get(i, j)?.building != null; }
   // walking costs of the cells of one tile (path.js): people keep to sidewalks, paths and building plots,
   // cross roads at the zebra crossings, and only walk on grass when there is no other way
   stampCost(i, j) {
@@ -114,7 +120,7 @@ export class TileMap {
   // height of the ground people and cars stand on (bridges and their ramps)
   groundY(x, z) {
     const i = tileOf(x), j = tileOf(z);
-    if (!this.isRoad(i, j)) return 0;
+    if (!this.isRoad(i, j)) return this.get(i, j)?.curveAny ? this.game.curves.heightAt(x, z) : 0;
     const b = this.bridgeH(i, j);
     if (b) return b;
     const rd = this.rampDir(i, j);
@@ -137,6 +143,8 @@ export class TileMap {
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
     for (let a = i - 2; a <= i + 2; a++) for (let c = j - 2; c <= j + 2; c++) this.rebuild(a, c); // wide roads look at their neighbours' neighbours
     this.game.water?.roadChanged(i, j);   // roads over water are walkable (bridges), no reeds on the road
+    this.game.curves?.refreshNear(i, j);  // a bridge's pillars step off the new road
+    if (on) this.game.curves?.linkLater(i, j);   // a curved road ending here joins this road
     return true;
   }
 
@@ -212,6 +220,8 @@ export class TileMap {
     if (s && w && !this.isRoad(i - 1, j + 1)) box(SW, .14, SW, WALK, -E, .07, E, g);
     // sidewalk details: a curb along the road and paving joints
     const open = [['n', !n, 0, -1], ['s', !s, 0, 1], ['e', !e, 1, 0], ['w', !w, -1, 0]].filter(q => q[1]);
+    // sides where the sidewalk runs along empty land (not in front of a building and its sign)
+    const free = open.filter(([, , a, b]) => !this.hasBuilding(i + a, j + b));
     for (const [, , a, b] of open) {
       const cxy = HALF - SW + .12;
       if (a) box(.24, .2, TILE, CURB, a * cxy, .1, 0, g); else box(TILE, .2, .24, CURB, 0, .1, b * cxy, g);
@@ -220,8 +230,8 @@ export class TileMap {
       }
     }
     // street trees in little soil squares on every other tile (lamps stand on the others)
-    if (((i + j) & 1) === 1 && open.length && !this.overWater(i, j) && !this.rampDir(i, j) && !this.bridgeH(i, j)) {
-      const [, , a, b] = open[(i * 7 + j * 3 & 255) % open.length];
+    if (((i + j) & 1) === 1 && free.length && !this.overWater(i, j) && !this.rampDir(i, j) && !this.bridgeH(i, j)) {
+      const [, , a, b] = free[(i * 7 + j * 3 & 255) % free.length];
       const tx = a ? a * E : 2.5, tz = a ? 2.5 : b * E;
       box(1.3, .03, 1.3, '#6b5a3e', tx, .15, tz, g);
       cyl(.12, .16, 2.2, '#8b5a2b', tx, 1.2, tz, g, 7);
@@ -232,8 +242,8 @@ export class TileMap {
       this.treeRects.set(k, rect);
     }
     // now and then a bench or a bin on the sidewalk
-    if (open.length && (i * 5 + j * 11 & 255) % 7 === 0 && !this.bridgeH(i, j) && !this.rampDir(i, j)) {
-      const [, , a, b] = open[0], bx = a ? a * (HALF - .6) : -2.5, bz = a ? -2.5 : b * (HALF - .6);
+    if (free.length && (i * 5 + j * 11 & 255) % 7 === 0 && !this.bridgeH(i, j) && !this.rampDir(i, j)) {
+      const [, , a, b] = free[0], bx = a ? a * (HALF - .6) : -2.5, bz = a ? -2.5 : b * (HALF - .6);
       const bench = new THREE.Group();
       bench.position.set(bx, .14, bz);
       bench.rotation.y = Math.atan2(-a, -b);
@@ -297,7 +307,8 @@ export class TileMap {
     const bh = this.bridgeH(i, j), rd = !bh && this.rampDir(i, j);
     // a street lamp on every other tile, standing on a sidewalk (not on a sloping ramp)
     if (((i + j) & 1) === 0 && !rd) {
-      const side = !s ? 's' : !n ? 'n' : !e ? 'e' : !w ? 'w' : null;
+      const nb = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
+      const side = ['s', 'n', 'e', 'w'].find(q => !{ n, s, e, w }[q] && !this.hasBuilding(i + nb[q][0], j + nb[q][1])) || null;
       if (side) {
         const off = HALF - .6;
         const [lx, lz, ax, az] = { s: [-2, off, 0, -1], n: [2, -off, 0, 1], e: [off, 2, -1, 0], w: [-off, -2, 1, 0] }[side];

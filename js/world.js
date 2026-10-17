@@ -97,40 +97,43 @@ export class World {
     this.placeMist();
   }
 
-  // ---------- mist over the land we haven't expanded to yet (no trees out there) ----------
+  // ---------- the land we haven't expanded to yet: under a dark fog, like an unexplored map ----------
   buildMist() {
-    const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 4, 64, 64, 62);
-    gr.addColorStop(0, 'rgba(255,255,255,.95)');
-    gr.addColorStop(.45, 'rgba(255,255,255,.55)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = gr;
-    x.fillRect(0, 0, 128, 128);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    this.mistMat = new THREE.SpriteMaterial({ map: tex, color: '#e6ebef', transparent: true, opacity: .8, depthWrite: false });
     this.mist = new THREE.Group();
+    this.mistLayers = [
+      { y: .45, op: .78, color: '#05070d' },   // low, dark: hides the ground
+      { y: 3.2, op: .42, color: '#101624' },   // a thinner veil above it
+    ].map(l => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: l.color, transparent: true, opacity: l.op, depthWrite: false, fog: false }));
+      m.position.y = l.y;
+      m.renderOrder = 3;
+      this.mist.add(m);
+      return m;
+    });
     this.scene.add(this.mist);
   }
+  // the fog covers everything outside the land, with a soft edge so the border isn't a hard line
   placeMist() {
-    while (this.mist.children.length) this.mist.remove(this.mist.children[0]);
-    const half = this.landHalf;
-    // a ring of soft clouds: thin right at the edge (the land stays visible), thicker further out
-    for (let k = 0; k < 150; k++) {
-      let px, pz, out;
-      do {
-        px = rand(-half - 130, half + 130); pz = rand(-half - 130, half + 130);
-        out = Math.max(Math.abs(px), Math.abs(pz)) - half;
-      } while (out < 3);
-      const s = rand(16, 30) * (out < 20 ? .7 : 1);
-      const sp = new THREE.Sprite(this.mistMat);
-      sp.position.set(px, Math.min(14, 1.5 + out * .12) + rand(0, 3), pz);
-      sp.scale.set(s * 1.8, s * .75, 1);
-      sp.userData = { bx: px, bz: pz, ph: rand(0, 6), amp: rand(1, 3) };
-      sp.renderOrder = 2;
-      this.mist.add(sp);
-    }
+    const half = this.landHalf, ext = half + 260, N = 1024;
+    const c = document.createElement('canvas');
+    c.width = c.height = N;
+    const x = c.getContext('2d'), k = N / (ext * 2);
+    x.fillStyle = '#fff';
+    x.fillRect(0, 0, N, N);
+    x.globalCompositeOperation = 'destination-out';
+    // the blur eats into the hole, so the hole is a bit bigger than the land: the dark starts right at its edge
+    x.filter = `blur(${Math.round(7 * k)}px)`;
+    const hole = (half + 12) * k;
+    x.fillRect(N / 2 - hole, N / 2 - hole, hole * 2, hole * 2);
+    const tex = new THREE.CanvasTexture(c);
+    this.mistLayers.forEach((m, i) => {
+      m.scale.set(ext * 2, 1, ext * 2);
+      m.material.alphaMap?.dispose();
+      m.material.alphaMap = i === 0 ? tex : tex.clone();
+      if (i) m.material.alphaMap.needsUpdate = true;
+      m.material.needsUpdate = true;
+    });
   }
 
   buildClouds() {
@@ -166,15 +169,9 @@ export class World {
   }
 
   update(dt) {
-    // the mist drifts a little and gets darker at night with the light
+    // the upper veil breathes a little
     this.mistT = (this.mistT || 0) + dt;
-    for (const m of this.mist.children) {
-      const u = m.userData;
-      m.position.x = u.bx + Math.sin(this.mistT * .05 + u.ph) * u.amp * 2;
-      m.position.z = u.bz + Math.cos(this.mistT * .04 + u.ph) * u.amp;
-    }
-    const day = Math.min(1, Math.max(0, (this.hemi.intensity - .22) / .95));
-    this.mistMat.color.setRGB(.32 + .6 * day, .35 + .58 * day, .42 + .52 * day);
+    this.mistLayers[1].material.opacity = .36 + Math.sin(this.mistT * .4) * .06;
     for (const c of this.clouds) {
       c.position.x += c.userData.speed * dt;
       if (c.position.x > 320) c.position.x = -320;

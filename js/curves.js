@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { TILE } from './path.js';
 import { box, cyl, mat, sideMat, mergeStatic, shadows, dist2d } from './util.js';
-import { tileOf } from './tiles.js';
+import { tileOf, BRIDGE_H as DECK_H } from './tiles.js';
 
 const ROAD_W = 7, WALK_W = 2.4, BRIDGE_H = 7.5, RAMP = 22;
 const smooth = x => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
@@ -47,13 +47,14 @@ export function sampleCurve(pts, bridge) {
   const out = [];
   for (let k = 0; k <= n; k++) {
     const u = k / n, p = curve.getPointAt(u), tg = curve.getTangentAt(u);
-    const d = u * L, h = bridge ? BRIDGE_H * Math.min(smooth(d / RAMP), smooth((L - d) / RAMP)) : 0;
+    // bridge: true = the tall bridge over other roads; a function = its own height profile (over water)
+    const d = u * L, h = typeof bridge === 'function' ? bridge(d, L) : bridge ? BRIDGE_H * Math.min(smooth(d / RAMP), smooth((L - d) / RAMP)) : 0;
     out.push({ x: p.x, z: p.z, y: h, nx: -tg.z, nz: tg.x, tx: tg.x, tz: tg.z, d });
   }
   return out;
 }
 
-export function buildCurveMesh(pts, bridge, preview) {
+export function buildCurveMesh(pts, bridge, preview, opts = {}) {
   const S = sampleCurve(pts, bridge);
   const g = new THREE.Group();
   if (S.length < 2) return g;
@@ -77,10 +78,18 @@ export function buildCurveMesh(pts, bridge, preview) {
     g.add(wall(S, -ew, .16, 1.15, '#d6d0c4'));
     g.add(wall(S, ew, .16, 1.15, '#d6d0c4'));
     let last = -99;
-    for (const s of S) {
+    for (let k = 0; k < S.length; k++) {
+      const s = S[k];
       if (s.y < 2.5 || s.d - last < 9) continue;
+      // a pillar may not stand on a road built underneath: move it along a little, or leave it out
+      let q = s;
+      if (opts.skip?.(s.x, s.z)) {
+        q = null;
+        for (let o = 1; o <= 5 && !q; o++) for (const kk of [k + o, k - o]) { const t = S[kk]; if (t && t.y >= 2.5 && !opts.skip(t.x, t.z)) { q = t; break; } }
+        if (!q) continue;
+      }
       last = s.d;
-      g.add(cyl(.7, .9, s.y - .7, '#bdb7ab', s.x, (s.y - .7) / 2, s.z, null, 12));
+      g.add(cyl(.7, .9, q.y - .7, '#bdb7ab', q.x, (q.y - .7) / 2, q.z, null, 12));
     }
   }
   if (preview) g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .6; } });
@@ -90,10 +99,13 @@ export function buildCurveMesh(pts, bridge, preview) {
 
 // a curved road that starts or ends on a road tile leaves that tile from its edge, straight out,
 // and that side of the tile opens up (no sidewalk) so both roads join cleanly
-function attach(game, pts) {
+// only = 0 / 1: just that end; tile: the road tile to join when the end lies on the grass next to it
+function attach(game, pts, only = null, tile = null) {
   const T = game.tiles, H = TILE / 2, links = [];
-  const fix = (end, next) => {
-    const i = tileOf(end.x), j = tileOf(end.z);
+  const fix = (end, next, e) => {
+    if (only !== null && e !== only) return [end];
+    let i = tileOf(end.x), j = tileOf(end.z);
+    if (!T.isDrivable(i, j) && tile) { i = tile.i; j = tile.j; }
     if (!T.isDrivable(i, j)) return [end];
     // leave through a side that has no road yet, the one facing where the curve goes
     const dx = next.x - i * TILE, dz = next.z - j * TILE, l = Math.hypot(dx, dz) || 1;
@@ -104,12 +116,12 @@ function attach(game, pts) {
       if (dot > bestDot) { bestDot = dot; si = a; sj = c; }
     }
     if (!si && !sj) return [end];   // a crossing: no free side
-    links.push({ i, j, side: si > 0 ? 'e' : si < 0 ? 'w' : sj > 0 ? 's' : 'n' });
+    links.push({ i, j, side: si > 0 ? 'e' : si < 0 ? 'w' : sj > 0 ? 's' : 'n', end: e });
     const ex = i * TILE + si * H, ez = j * TILE + sj * H;
     return [{ x: ex, z: ez }, { x: ex + si * 3, z: ez + sj * 3 }];
   };
-  const a = fix(pts[0], pts[1]);
-  const b = fix(pts[pts.length - 1], pts[pts.length - 2]).reverse();
+  const a = fix(pts[0], pts[1], 0);
+  const b = fix(pts[pts.length - 1], pts[pts.length - 2], 1).reverse();
   return { pts: [...a, ...pts.slice(1, -1), ...b], links };
 }
 
@@ -125,14 +137,21 @@ export class Curves {
     if (!links) ({ pts, links } = attach(this.game, pts));
     const c = { id: o.id ?? this.nextId++, pts: pts.map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) })), bridge: !!bridge, links };
     this.nextId = Math.max(this.nextId, c.id + 1);
-    c.group = buildCurveMesh(c.pts, c.bridge);
+    // over water a curved road lifts itself onto a deck (boats pass underneath)
+    c.lift = c.bridge ? null : this.liftFor(c.pts);
+    const prof = c.bridge || c.lift || false;
+    c.S = sampleCurve(c.pts, prof);
+    c.group = buildCurveMesh(c.pts, prof, false, { skip: (x, z) => this.game.tiles.isDrivable(tileOf(x), tileOf(z)) });
     this.game.scene.add(c.group);
     // tiles under a ground-level road can't hold buildings
     c.tiles = new Set();
-    for (const s of sampleCurve(c.pts, c.bridge)) {
+    c.allTiles = new Set();
+    for (const s of c.S) {
+      c.allTiles.add(tileOf(s.x) + ',' + tileOf(s.z));
       if (s.y > 1.5) continue;
       for (const off of [-ROAD_W / 2 - 1, 0, ROAD_W / 2 + 1]) c.tiles.add(tileOf(s.x + s.nx * off) + ',' + tileOf(s.z + s.nz * off));
     }
+    for (const k of c.allTiles) { const [i, j] = k.split(',').map(Number); this.game.tiles.rec(i, j).curveAny = (this.game.tiles.rec(i, j).curveAny || 0) + 1; }
     for (const k of c.tiles) { const [i, j] = k.split(',').map(Number); this.game.tiles.rec(i, j).curve++; }
     for (const k of c.tiles) { const [i, j] = k.split(',').map(Number); this.game.tiles.stampCost(i, j); }
     for (const l of c.links) { const r = this.game.tiles.rec(l.i, l.j); (r.links ||= { n: 0, s: 0, e: 0, w: 0 })[l.side]++; this.game.tiles.rebuild(l.i, l.j); }
@@ -146,8 +165,7 @@ export class Curves {
     const hw = ROAD_W / 2, x0 = i * TILE - TILE / 2, z0 = j * TILE - TILE / 2;
     for (const c of this.list) {
       if (!c.tiles.has(key)) continue;
-      for (const s of (c.S ||= sampleCurve(c.pts, c.bridge))) {
-        if (s.y > 1.5) continue;   // high part of a bridge: people walk on it, not under it
+      for (const s of c.S) {
         for (let o = -hw - WALK_W; o <= hw + WALK_W; o += .5) {
           const x = s.x + s.nx * o, z = s.z + s.nz * o;
           if (x < x0 || x >= x0 + TILE || z < z0 || z >= z0 + TILE) continue;
@@ -158,9 +176,68 @@ export class Curves {
       }
     }
   }
+  // height profile over water: a deck at bridge height above the water, 10 m ramps either side
+  liftFor(pts) {
+    const water = this.game.water;
+    if (!water?.list.length) return null;
+    const wet = sampleCurve(pts, false).filter(s => water.wetAt(s.x, s.z, 1.5)).map(s => s.d);
+    if (!wet.length) return null;
+    // ...and always back down to the road at both ends (no step where it joins a street)
+    return (d, L) => { let m = Infinity; for (const w of wet) m = Math.min(m, Math.abs(d - w)); return DECK_H * smooth(1 - (m - 1) / 10) * Math.min(smooth(d / 7), smooth((L - d) / 7)); };
+  }
+  // the height people walk at on a lifted curved road (0 = not on one)
+  heightAt(x, z) {
+    let y = 0;
+    for (const c of this.list) {
+      if (!c.lift) continue;
+      for (const s of c.S) if (s.y > y && Math.hypot(s.x - x, s.z - z) < ROAD_W / 2 + WALK_W) y = s.y;
+    }
+    return y;
+  }
+  covers(x, z) { return this.list.some(c => c.S.some(s => Math.hypot(s.x - x, s.z - z) < ROAD_W / 2 + WALK_W)); }
+  // a road was built where a curved road ends (or right next to that end): join them now
+  linkLater(i, j) {
+    const cx = i * TILE, cz = j * TILE;
+    for (const c of [...this.list]) {
+      for (const e of [0, 1]) {
+        const p = e ? c.pts[c.pts.length - 1] : c.pts[0];
+        if (Math.hypot(p.x - cx, p.z - cz) > 10) continue;
+        const linked = c.links.some(l => (l.end ?? (Math.hypot(l.i * TILE - p.x, l.j * TILE - p.z) < 9 ? e : -1)) === e);
+        if (linked) continue;
+        const r = attach(this.game, c.pts, e, { i, j });
+        if (!r.links.length) continue;
+        const d = { pts: r.pts, bridge: c.bridge, id: c.id, links: [...c.links, ...r.links] };
+        this.remove(c);
+        this.add(d.pts, d.bridge, { id: d.id, links: d.links });
+        break;
+      }
+    }
+  }
+  // the free end of a curved road near p (to start / end a new one exactly there)
+  endNear(x, z, r = 5) {
+    let best = null, bd = r;
+    for (const c of this.list) for (const p of [c.pts[0], c.pts[c.pts.length - 1]]) {
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (d < bd) { bd = d; best = { x: p.x, z: p.z }; }
+    }
+    return best;
+  }
+  // rebuild a curved road (water or roads changed underneath)
+  refresh(c) {
+    const d = { pts: c.pts, bridge: c.bridge, id: c.id, links: c.links };
+    this.remove(c);
+    return this.add(d.pts, d.bridge, { id: d.id, links: d.links });
+  }
+  refreshNear(i, j) {
+    for (const c of [...this.list]) if ((c.bridge || c.lift) && c.allTiles.has(i + ',' + j)) this.refresh(c);
+  }
+  refreshIn(b) {
+    for (const c of [...this.list]) if (c.S.some(s => s.x > b.x0 && s.x < b.x1 && s.z > b.z0 && s.z < b.z1)) this.refresh(c);
+  }
   remove(c) {
     const i = this.list.indexOf(c);
     if (i < 0) return;
+    for (const k of c.allTiles || []) { const [a, b] = k.split(',').map(Number); const r = this.game.tiles.get(a, b); if (r) r.curveAny = Math.max(0, (r.curveAny || 0) - 1); }
     this.list.splice(i, 1);
     this.game.scene.remove(c.group);
     c.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });

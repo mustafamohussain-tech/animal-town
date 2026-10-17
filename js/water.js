@@ -40,7 +40,8 @@ function rippleTexture() {
 }
 const TEX = { lake: rippleTexture(), river: rippleTexture() };
 // layers: land (pushed back most) < sand < water < roads
-const waterMat = tex => new THREE.MeshStandardMaterial({ color: '#ffffff', map: tex, transparent: true, opacity: .92, roughness: .12, metalness: .08,
+// solid (not see-through): where two rivers or a river and a lake overlap it looks like one water surface
+const waterMat = tex => new THREE.MeshStandardMaterial({ color: '#ffffff', map: tex, roughness: .12, metalness: .08,
   polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 const MAT = {
   lake: waterMat(TEX.lake),
@@ -218,13 +219,26 @@ export class Water {
     this.game.scene.add(w.group);
     this.list.push(w);
     this.changed(w);
+    this.touching(w).forEach(o => (this.rebuildSet ||= new Set()).add(o));   // their reeds at the joint go away
     // trees and street objects that ended up in the water go away
     for (const p of [...this.game.props.list]) if (p.type !== 'busstop' && this.wetIn(w, p.x, p.z, 1)) this.game.props.remove(p);
     return w;
   }
+  // other water bodies this one overlaps (a river flowing into another river or a lake)
+  touching(w) {
+    const a = this.bounds(w);
+    return this.list.filter(o => {
+      if (o === w) return false;
+      const b = this.bounds(o);
+      if (a.x1 < b.x0 || b.x1 < a.x0 || a.z1 < b.z0 || b.z1 < a.z0) return false;
+      const pts = w.poly || w.S;
+      return pts.some(p => this.wetIn(o, p.x, p.z, 2));
+    });
+  }
   remove(w) {
     const i = this.list.indexOf(w);
     if (i < 0) return;
+    this.touching(w).forEach(o => (this.rebuildSet ||= new Set()).add(o));
     this.list.splice(i, 1);
     this.game.scene.remove(w.group);
     w.group.traverse(m => { if (m.isMesh && m.userData.ownGeo) m.geometry.dispose(); });
@@ -238,6 +252,7 @@ export class Water {
     this.wetCache.clear();
     this.dirty = true;
     const b = this.bounds(w), T = this.game.tiles;
+    this.game.curves?.refreshIn(b);   // curved roads over this water lift up (or come down)
     for (let i = tileOf(b.x0) - 2; i <= tileOf(b.x1) + 2; i++) for (let j = tileOf(b.z0) - 2; j <= tileOf(b.z1) + 2; j++) if (T.isRoad(i, j)) T.rebuild(i, j);
   }
   bounds(w) {
@@ -261,7 +276,9 @@ export class Water {
     const T = this.game.tiles, dry = (x, z) => !T.isRoadish(tileOf(x), tileOf(z));
     // decorations only where there is no road
     const deco = { add: o => all.add(o), children: all.children };
-    const keep = () => { for (const o of [...all.children]) if (!dry(o.position.x, o.position.z) && !o.userData.pier) all.remove(o); };
+    // no reeds or rocks on roads, or in / at the edge of other water (where two rivers join)
+    const others = x => this.list.some(o => o !== w && this.wetIn(o, x.x, x.z, 2.5));
+    const keep = () => { for (const o of [...all.children]) if ((!dry(o.position.x, o.position.z) || others(o.position)) && !o.userData.pier) all.remove(o); };
     w.ducks = [];
     if (w.kind === 'lake') {
       const { poly, nrm, c } = lakeOutline(w.pts);
@@ -301,6 +318,14 @@ export class Water {
       const S = w.S = sampleCurve(w.pts, false), hw = w.width / 2;
       g.add(strip(S, -hw - 1.8, hw + 1.8, SAND_Y, MAT.sand, .1));
       g.add(strip(S, -hw, hw, WATER_Y - (w.id % 6) * .002, MAT.river, .08));
+      // an end that flows into other water gets a round end, so the joint is smooth
+      for (const s of [S[0], S[S.length - 1]]) {
+        if (!this.list.some(o => o !== w && this.wetIn(o, s.x, s.z, 1))) continue;
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(hw + .4, 28).rotateX(-Math.PI / 2), MAT.river);
+        disc.position.set(s.x, WATER_Y - (w.id % 6) * .002, s.z);
+        disc.userData.ownGeo = true;
+        g.add(disc);
+      }
       S.forEach((s, k) => {
         if (k % 6 !== 3) return;
         const side = Math.random() < .5 ? -1 : 1;
@@ -348,7 +373,9 @@ export class Water {
       for (let j = grid.cell(b.z0); j <= grid.cell(b.z1); j++) for (let i = grid.cell(b.x0); i <= grid.cell(b.x1); i++) {
         if (i < 0 || j < 0 || i >= grid.n || j >= grid.n) continue;
         const x = grid.center(i), z = grid.center(j);
-        if (T.isRoadish(tileOf(x), tileOf(z))) continue;
+        const ti = tileOf(x), tj = tileOf(z);
+        if (T.isRoad(ti, tj) || T.isDirt(ti, tj)) continue;
+        if (T.get(ti, tj)?.curveAny && this.game.curves.covers(x, z)) continue;   // on a curved road over the water
         if (w.pierSeg && segDist(x, z, w.pierSeg[0], w.pierSeg[1]) < 1.1) continue;   // you can walk on the pier
         if (this.wetIn(w, x, z)) grid.wet[j * grid.n + i] = 1;
       }

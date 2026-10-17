@@ -75,6 +75,7 @@ export class Vehicles {
   remove(v) {
     const i = this.list.indexOf(v);
     if (i < 0) return;
+    this.unblock(v);
     this.list.splice(i, 1);
     this.game.scene.remove(v.group);
   }
@@ -93,12 +94,28 @@ export class Vehicles {
       s = { x: w.x, z: w.z, rot: home.angle, out: [f] };
     }
     if (!s) s = this.garageSpot(v, home ? home.center : c ? c.root.position : { x: 0, z: 0 });
-    if (!s) s = this.curbSpot(home ? home.center : c ? c.root.position : { x: 0, z: 0 });
-    if (s) { v.x = s.x; v.z = s.z; v.rot = s.rot; v.bay = s.bay || null; v.out = s.out || []; }
-    else if (newSpot || v.x == null) { v.x = 0; v.z = 0; v.rot = 0; }
     v.home = home?.complete ? home.id : null;
-    v.group.position.set(v.x, this.game.tiles.groundY(v.x, v.z), v.z);
-    v.group.rotation.y = v.rot;
+    v.away = false;
+    // no carport and no free bay: the car is kept out of sight until there is a place (never on the street)
+    v.stored = !s;
+    v.group.visible = !!s;
+    if (s) { v.x = s.x; v.z = s.z; v.rot = s.rot; v.bay = s.bay || null; v.out = s.out || []; }
+    v.group.position.set(v.x ?? 0, this.game.tiles.groundY(v.x ?? 0, v.z ?? 0), v.z ?? 0);
+    v.group.rotation.y = v.rot ?? 0;
+    if (s) this.block(v); else this.unblock(v);
+  }
+  // a parked car is in the way: people walk around it
+  block(v) {
+    this.unblock(v);
+    const along = Math.abs(Math.sin(v.rot)) > .7;
+    const hw = along ? 2.3 : 1.1, hd = along ? 1.1 : 2.3;
+    v.rect = [v.x - hw, v.z - hd, v.x + hw, v.z + hd];
+    this.game.world.grid.mark(...v.rect, 1);
+  }
+  unblock(v) {
+    if (!v.rect) return;
+    this.game.world.grid.mark(...v.rect, -1);
+    v.rect = null;
   }
   garageSpot(v, near) {
     let best = null, bd = 90;
@@ -136,7 +153,8 @@ export class Vehicles {
       const home = this.game.town.get(c.homeId);
       const want = home?.complete ? home.id : null;
       // a new home, or a car park was built for a car waiting at the curb
-      if (want !== (v.home ?? null) || (!v.bay && !v.out?.length && !v.away && this.game.town.of('garage').length)) this.park(v, true);
+      // a new home, or a place for a car that had none
+      if (want !== (v.home ?? null) || (v.stored && (this.game.town.of('garage').length || home?.parkSpots))) this.park(v, true);
     }
   }
 

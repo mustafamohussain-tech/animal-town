@@ -62,12 +62,11 @@ function townDecor(g, key) {
       }
     });
   }
-  // two balloons at every finished building
+  // balloons at the front corners of every finished building (never in front of its sign)
   for (const b of g.town.all) {
     if (!b.complete || b.def.open) continue;
-    const d = b.spot('door');
     for (const s of [-1, 1]) {
-      const x = d.x + Math.cos(d.face) * s * 1.6, z = d.z - Math.sin(d.face) * s * 1.6, y = rand(3.2, 4.2);
+      const w = b.toWorld(s * (b.W / 2 + .2), b.D / 2 + .9), x = w.x, z = w.z, y = rand(2.3, 2.8);
       ball(.42, pick(COLORS), x, y, z, root).scale.y = 1.2;
       cyl(.012, .012, y - .4, '#dddddd', x, (y - .4) / 2, z, root, 3);
     }

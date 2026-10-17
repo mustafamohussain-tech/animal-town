@@ -6,7 +6,7 @@ import { tileOf } from './tiles.js';
 import { sampleCurve } from './curves.js';
 import { mesh, rand, pick } from './util.js';
 
-const PATH_W = 2.6;
+const PATH_W = 2.2;   // a dirt road: wide enough for two people side by side
 const DIRT = new THREE.MeshStandardMaterial({ color: '#b48a5a', roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.2, polygonOffsetUnits: 2 });
 const EDGE = new THREE.MeshStandardMaterial({ color: '#9c7448', roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.4, polygonOffsetUnits: 2.5 });
 

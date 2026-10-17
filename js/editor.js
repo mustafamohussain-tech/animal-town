@@ -338,6 +338,9 @@ export class Editor {
       const d = Math.hypot(a * TILE - p.x, c * TILE - p.z);
       if (d < bd) { bd = d; best = { x: a * TILE, z: c * TILE, road: true }; }
     }
+    // or the end of another curved road: the new one continues it
+    const ce = g.curves.endNear(p.x, p.z);
+    if (ce && (!best || Math.hypot(ce.x - p.x, ce.z - p.z) < bd)) return { x: ce.x, z: ce.z };
     return best || { x: Math.round(p.x), z: Math.round(p.z) };
   }
 
