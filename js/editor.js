@@ -6,6 +6,7 @@ import { TILE } from './path.js';
 import { tileOf } from './tiles.js';
 import { buildCurveMesh } from './curves.js';
 import { PROP_TYPES } from './props.js';
+import { t } from './i18n.js';
 import { canPlace, roadInFront, footprint, makeGhostModel, GHOST_OK, GHOST_BAD } from './buildings.js';
 
 const PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -101,9 +102,10 @@ export class Editor {
       return;
     }
     if (PROP_TYPES[t]) {
-      if (!g.world.inLand(tileOf(p.x), tileOf(p.z))) return;
+      const s = this.propSpot(t, p);
+      if (!s.ok) { if (s.why) g.log(s.why); return; }
       if (t === 'busstop') for (const old of g.props.list.filter(q => q.type === 'busstop')) g.props.remove(old); // only one bus stop
-      g.props.add(t, Math.round(p.x * 2) / 2, Math.round(p.z * 2) / 2, this.rot * Math.PI / 2);
+      g.props.add(t, s.x, s.z, s.rot);
       g.emit('change');
       return;
     }
@@ -137,11 +139,65 @@ export class Editor {
     } else if (t === 'curve' || t === 'bridge') {
       this.updateCurve(p);
     } else if (PROP_TYPES[t]) {
+      // shows where it will really stand (snapped to the sidewalk / junction corner), red = not allowed here
+      const s = this.propSpot(t, p);
       this.marker.visible = true;
-      this.marker.position.set(Math.round(p.x * 2) / 2, 0, Math.round(p.z * 2) / 2);
+      this.marker.position.set(s.x, 0, s.z);
+      this.marker.traverse(o => o.material?.color.set(s.ok ? '#4cd964' : '#ff3b30'));
     } else if (t === 'place') {
       this.ghostAt(p);
     }
+  }
+
+  // where a street object may stand:
+  //  lamp / bench / bus stop -> on the sidewalk beside a road (snapped, facing the road)
+  //  traffic light           -> only on the corners of a crossing / T-junction
+  //  tree / flowers          -> anywhere except on the road
+  propSpot(type, p) {
+    const g = this.game, T = g.tiles, H = TILE / 2;
+    const i = tileOf(p.x), j = tileOf(p.z);
+    const free = { ok: true, x: Math.round(p.x * 2) / 2, z: Math.round(p.z * 2) / 2, rot: this.rot * Math.PI / 2 };
+    const bad = why => ({ ok: false, x: free.x, z: free.z, why });
+    if (!g.world.inLand(i, j)) return bad('');
+    const busy = (x, z) => { const r = T.get(tileOf(x), tileOf(z)); return r && r.building != null; };
+
+    if (type === 'traffic') {
+      let best = null, bd = 11;
+      for (let a = i - 1; a <= i + 1; a++) for (let b = j - 1; b <= j + 1; b++) {
+        if (!T.isJunction(a, b)) continue;
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          if (T.isRoad(a + sx, b + sz)) continue;
+          const x = a * TILE + sx * (H + .8), z = b * TILE + sz * (H + .8);
+          const d = Math.hypot(x - p.x, z - p.z);
+          // each corner faces one of the two roads, so the lights take turns
+          if (d < bd && !busy(x, z)) { bd = d; best = { ok: true, x, z, rot: sx * sz > 0 ? (sx > 0 ? -Math.PI / 2 : Math.PI / 2) : (sz > 0 ? Math.PI : 0) }; }
+        }
+      }
+      return best || bad(t('propJunction'));
+    }
+
+    if (type === 'lamp' || type === 'bench' || type === 'busstop') {
+      const off = type === 'lamp' ? .6 : .9;
+      let best = null, bd = T.onAsphalt(p.x, p.z) ? 9 : type === 'busstop' ? 7 : 3.5;
+      for (let a = i - 2; a <= i + 2; a++) for (let b = j - 2; b <= j + 2; b++) {
+        if (!T.isRoad(a, b)) continue;
+        for (const [di, dj] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+          if (T.isRoad(a + di, b + dj)) continue;
+          // the sidewalk along this edge of the road tile
+          const cx = a * TILE + di * (H - off), cz = b * TILE + dj * (H - off);
+          const along = di ? Math.max(-H + 1.2, Math.min(H - 1.2, p.z - b * TILE)) : Math.max(-H + 1.2, Math.min(H - 1.2, p.x - a * TILE));
+          const x = di ? cx : a * TILE + Math.round(along * 2) / 2, z = di ? b * TILE + Math.round(along * 2) / 2 : cz;
+          const d = Math.hypot(x - p.x, z - p.z);
+          if (d < bd) { bd = d; best = { ok: true, x, z, rot: Math.atan2(-di, -dj) }; }
+        }
+      }
+      if (best) return best;
+      if (type === 'busstop' || T.onAsphalt(p.x, p.z)) return bad(t('propRoadside'));
+      return busy(p.x, p.z) ? bad('') : free;   // a lamp or bench in a park is fine
+    }
+
+    if (T.onAsphalt(p.x, p.z)) return bad(t('propOffRoad'));
+    return busy(p.x, p.z) ? bad('') : free;
   }
 
   // tiles of the straight line being drawn

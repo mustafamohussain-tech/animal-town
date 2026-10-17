@@ -62,7 +62,25 @@
         <button id="btn-hide" class="icon" data-i18n-title="hide">🙈</button>
       </div>
     </header>
-
+    <nav id="tabs" class="tabs" role="tablist">
+      <button role="tab" data-tab="play"><span class="ti">🎮</span><span class="tl" data-i18n="tab_play"></span><i class="badge"></i></button>
+      <button role="tab" data-tab="sel"><span class="ti">👤</span><span class="tl" data-i18n="tab_sel"></span><i class="badge"></i></button>
+      <button role="tab" data-tab="build"><span class="ti">🏗️</span><span class="tl" data-i18n="tab_build"></span><i class="badge"></i></button>
+      <button role="tab" data-tab="people"><span class="ti">🐾</span><span class="tl" data-i18n="tab_people"></span><i class="badge"></i></button>
+      <button role="tab" data-tab="film"><span class="ti">🎥</span><span class="tl" data-i18n="tab_film"></span><i class="badge"></i></button>
+      <button role="tab" data-tab="town"><span class="ti">🏘️</span><span class="tl" data-i18n="tab_town"></span><i class="badge"></i></button>
+    </nav>
+    <div id="tab-body" class="tab-body">
+      <div class="pane" data-pane="play">
+    <section class="card">
+      <h2>💬 <span data-i18n="command"></span></h2>
+      <div class="row-in">
+        <input id="in-cmd" data-i18n-ph="cmdPh" autocomplete="off" dir="auto">
+        <button id="btn-cmd" class="primary" data-i18n="run"></button>
+      </div>
+      <p id="cmd-result" class="result" dir="auto"></p>
+      <p class="hint" data-i18n="cmdHelp"></p>
+    </section>
     <section class="card">
       <h2>➕ <span data-i18n="newFollower"></span></h2>
       <div class="row-in">
@@ -73,29 +91,15 @@
       <label class="check"><input type="checkbox" id="chk-follow" checked> <span data-i18n="followNew"></span></label>
       <button id="btn-bulk" class="wide">👥 <span data-i18n="addMany"></span></button>
     </section>
-
     <section class="card">
-      <h2>🖥️ <span data-i18n="screen"></span></h2>
-      <div id="screen-btns" class="chips">
-        <button class="chip-btn" data-mode="phone">📱 <span data-i18n="scr_phone"></span></button>
-        <button class="chip-btn" data-mode="pc">🖥️ <span data-i18n="scr_pc"></span></button>
-        <button class="chip-btn" data-mode="fill">⬛ <span data-i18n="scr_fill"></span></button>
-      </div>
-      <button id="btn-full" class="wide">⛶ <span data-i18n="fullscreen"></span></button>
+      <h2>📜 <span data-i18n="log"></span></h2>
+      <ul id="log" class="log"></ul>
     </section>
-
-    <section class="card">
-      <h2>💬 <span data-i18n="command"></span></h2>
-      <div class="row-in">
-        <input id="in-cmd" data-i18n-ph="cmdPh" autocomplete="off" dir="auto">
-        <button id="btn-cmd" class="primary" data-i18n="run"></button>
       </div>
-      <p id="cmd-result" class="result" dir="auto"></p>
-      <p class="hint" data-i18n="cmdHelp"></p>
-    </section>
-
+      <div class="pane" data-pane="sel">
     <section class="card" id="sel-card"></section>
-
+      </div>
+      <div class="pane" data-pane="build">
     <section class="card">
       <h2>🏗️ <span data-i18n="buildMenu"></span></h2>
       <div id="b-types" class="grid four"></div>
@@ -111,24 +115,21 @@
         <button id="d-photo">📷 <span data-i18n="fromPhoto"></span></button>
       </div>
     </section>
-
     <section class="card">
       <h2>🛣️ <span data-i18n="tools"></span></h2>
       <div id="tool-grid" class="grid four"></div>
       <p id="tool-hint" class="hint"></p>
       <button id="tool-done" class="primary wide">✅ <span data-i18n="toolDone"></span></button>
     </section>
-
-    <section class="card">
-      <h2>🎥 <span data-i18n="camera"></span></h2>
-      <div id="cam-grid" class="grid"></div>
-      <div id="floor-row" class="floor-row">
-        <button id="floor-down">▼</button><b id="floor-n"></b><button id="floor-up">▲</button>
-        <button id="floor-exit">🚪 <span data-i18n="cam_exit"></span></button>
       </div>
-      <p class="hint" data-i18n="camHint"></p>
+      <div class="pane" data-pane="people">
+    <section class="card">
+      <h2>🐾 <span data-i18n="citizens"></span> <span id="cit-count" class="pill">0</span></h2>
+      <input id="in-search" data-i18n-ph="search" autocomplete="off" dir="auto">
+      <div id="cit-list" class="cit-list"></div>
     </section>
-
+      </div>
+      <div class="pane" data-pane="film">
     <section class="card">
       <h2>⏺️ <span data-i18n="rec"></span> <span id="rec-state" class="pill rec-state"></span></h2>
       <label class="fld wide"><span data-i18n="recQuality"></span><select id="rec-quality"></select></label>
@@ -145,7 +146,37 @@
       <p id="rec-info" class="hint"></p>
       <p class="hint" data-i18n="recHint"></p>
     </section>
-
+    <section class="card">
+      <h2>🎥 <span data-i18n="camera"></span></h2>
+      <div id="cam-grid" class="grid"></div>
+      <div id="floor-row" class="floor-row">
+        <button id="floor-down">▼</button><b id="floor-n"></b><button id="floor-up">▲</button>
+        <button id="floor-exit">🚪 <span data-i18n="cam_exit"></span></button>
+      </div>
+      <p class="hint" data-i18n="camHint"></p>
+    </section>
+    <section class="card">
+      <h2>🖥️ <span data-i18n="screen"></span></h2>
+      <div id="screen-btns" class="chips">
+        <button class="chip-btn" data-mode="phone">📱 <span data-i18n="scr_phone"></span></button>
+        <button class="chip-btn" data-mode="pc">🖥️ <span data-i18n="scr_pc"></span></button>
+        <button class="chip-btn" data-mode="fill">⬛ <span data-i18n="scr_fill"></span></button>
+      </div>
+      <button id="btn-full" class="wide">⛶ <span data-i18n="fullscreen"></span></button>
+    </section>
+    <section class="card">
+      <h2>🎵 <span data-i18n="music"></span></h2>
+      <div class="btn-row"><button id="music-toggle" class="primary"></button></div>
+      <div class="range-row"><h3 data-i18n="volume"></h3><input id="music-vol" type="range" min="0" max="1" step="0.05"></div>
+      <p id="music-src" class="hint"></p>
+      <div class="btn-row">
+        <label class="file-btn">📁 <span data-i18n="musicFile"></span><input id="music-file" type="file" accept="audio/*"></label>
+        <button id="music-builtin">🎹</button>
+      </div>
+      <p class="hint" data-i18n="musicHint"></p>
+    </section>
+      </div>
+      <div class="pane" data-pane="town">
     <section class="card">
       <h2>📅 <span data-i18n="calendar"></span></h2>
       <p class="hint" data-i18n="calHint"></p>
@@ -156,7 +187,6 @@
         <button id="ev-stop" title="stop">⏹️</button>
       </div>
     </section>
-
     <section class="card">
       <h2>🕒 <span data-i18n="time"></span> <b id="clock-big" class="clock"></b></h2>
       <input id="time-range" type="range" min="0" max="23.99" step="0.05">
@@ -174,19 +204,6 @@
           <option value="600000" data-i18n="cyc_10m"></option>
         </select></label>
     </section>
-
-    <section class="card">
-      <h2>🎵 <span data-i18n="music"></span></h2>
-      <div class="btn-row"><button id="music-toggle" class="primary"></button></div>
-      <div class="range-row"><h3 data-i18n="volume"></h3><input id="music-vol" type="range" min="0" max="1" step="0.05"></div>
-      <p id="music-src" class="hint"></p>
-      <div class="btn-row">
-        <label class="file-btn">📁 <span data-i18n="musicFile"></span><input id="music-file" type="file" accept="audio/*"></label>
-        <button id="music-builtin">🎹</button>
-      </div>
-      <p class="hint" data-i18n="musicHint"></p>
-    </section>
-
     <section class="card">
       <h2>🏘️ <span data-i18n="town"></span></h2>
       <div id="town-stats" class="town-stats"></div>
@@ -199,32 +216,42 @@
           <option value="60000" data-i18n="bd_1m"></option>
         </select></label>
       <p id="land-size" class="hint"></p>
+      <label class="check"><input type="checkbox" id="chk-askplace"> <span data-i18n="askPlace"></span></label>
       <div class="btn-row">
         <button id="btn-expand">🌍 <span data-i18n="expand"></span></button>
         <button id="btn-fire">🔥 <span data-i18n="fire"></span></button>
       </div>
+    </section>
+    <section class="card">
+      <h2>💾 <span data-i18n="dataT"></span></h2>
       <p class="hint" data-i18n="publishHint"></p>
       <input id="in-site" data-i18n-ph="sitePh" dir="ltr" autocomplete="off">
-      <label class="check"><input type="checkbox" id="chk-askplace"> <span data-i18n="askPlace"></span></label>
       <div class="btn-row">
         <button id="btn-export">💾 <span data-i18n="exportT"></span></button>
         <label class="file-btn">📂 <span data-i18n="importT"></span><input id="in-import" type="file" accept=".json,application/json"></label>
       </div>
-      <div class="btn-row"><button id="btn-reset" class="danger">🗑️ <span data-i18n="reset"></span></button></div>
     </section>
-
-    <section class="card">
-      <h2>🐾 <span data-i18n="citizens"></span> <span id="cit-count" class="pill">0</span></h2>
-      <input id="in-search" data-i18n-ph="search" autocomplete="off" dir="auto">
-      <div id="cit-list" class="cit-list"></div>
+    <section class="card danger-zone">
+      <h2>🧹 <span data-i18n="resetTitle"></span></h2>
+      <p class="hint" data-i18n="resetHint"></p>
+      <button id="btn-reset" class="danger wide">🧹 <span data-i18n="resetOpen"></span></button>
     </section>
-
-    <section class="card">
-      <h2>📜 <span data-i18n="log"></span></h2>
-      <ul id="log" class="log"></ul>
-    </section>
+      </div>
+    </div>
   </aside>
 </div>
+
+<dialog id="reset-dlg" class="dlg">
+  <h2>🧹 <span data-i18n="resetTitle"></span></h2>
+  <p class="hint" data-i18n="resetHint"></p>
+  <button id="reset-backup" class="wide">💾 <span data-i18n="resetBackup"></span></button>
+  <label class="check"><input type="checkbox" id="reset-sure"> <span data-i18n="resetSure"></span></label>
+  <div class="reset-opts">
+    <button id="reset-town" class="opt" disabled><b>🏚️ <span data-i18n="resetTown"></span></b><small data-i18n="resetTownSub"></small></button>
+    <button id="reset-all" class="opt danger" disabled><b>🔄 <span data-i18n="resetAll"></span></b><small data-i18n="resetAllSub"></small></button>
+  </div>
+  <div class="btn-row"><button id="reset-cancel" data-i18n="cancel"></button></div>
+</dialog>
 
 <dialog id="bulk" class="dlg">
   <h2>👥 <span data-i18n="bulkTitle"></span></h2>

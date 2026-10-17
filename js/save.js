@@ -84,6 +84,11 @@ export function loadGame(game) {
   return loadData(game, data);
 }
 
+// everything, including day 1 of the town (the day counter starts again)
+export function clearAll() {
+  clearSave();
+  try { localStorage.removeItem(FOUNDED); } catch (e) { /* ignore */ }
+}
 export function clearSave() {
   try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
 }

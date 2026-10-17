@@ -4,7 +4,7 @@ import { ANIMALS, ANIMAL_ORDER } from './animals.js';
 import { JOBS, JOB_ORDER } from './jobs.js';
 import { TYPES, BUILD_MENU, SHOP_EMOJI, makeSpec } from './buildings.js';
 import { runCommand } from './commands.js';
-import { saveGame, clearSave } from './save.js';
+import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
 import { EVENT_ORDER } from './events.js';
@@ -16,6 +16,7 @@ const TOOL_LIST = [['road', '🛣️'], ['curve', '〰️'], ['bridge', '🌉'],
 const CAM_LIST = [['free', '🖱️'], ['follow', '🎥'], ['cinema', '🎬'], ['plane', '✈️'], ['overview', '🗺️']];
 
 const $ = id => document.getElementById(id);
+const TAB_ORDER = ['play', 'sel', 'build', 'people', 'film', 'town'], TAB_KEY = 'animal-town-tab';
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -55,12 +56,16 @@ export class UI {
     $('show-panel').onclick = () => this.togglePanel();
     $('btn-fire').onclick = () => game.startFire();
     $('btn-expand').onclick = () => { game.expandLand(3); this.renderTown(); };
-    $('btn-reset').onclick = () => {
-      if (!confirm(t('resetConfirm'))) return;
-      clearSave();
-      game.noSave = true;
-      location.reload();
-    };
+    // fresh start: clear the town (day counter keeps going) or everything (day 1 again)
+    const rd = $('reset-dlg');
+    $('btn-reset').onclick = () => { $('reset-sure').checked = false; $('reset-town').disabled = $('reset-all').disabled = true; rd.showModal(); };
+    $('reset-sure').onchange = e => { $('reset-town').disabled = $('reset-all').disabled = !e.target.checked; };
+    $('reset-backup').onclick = () => exportTown(game);
+    $('reset-cancel').onclick = () => rd.close();
+    const wipe = all => { if (all) clearAll(); else clearSave(); game.noSave = true; location.reload(); };
+    $('reset-town').onclick = () => wipe(false);
+    $('reset-all').onclick = () => wipe(true);
+    this.setupTabs();
     $('b-place').onclick = () => this.placeBuilding();
     $('btn-bulk').onclick = () => this.openBulk();
     document.querySelectorAll('#screen-btns button').forEach(b => { b.onclick = () => this.setScreen(b.dataset.mode); });
@@ -139,8 +144,9 @@ export class UI {
     if (typing || e.ctrlKey || e.metaKey || e.altKey || $('designer').open) return;
     const k = e.key.toLowerCase();
     if (k === 'h') this.togglePanel();
-    else if (k === 'n') { e.preventDefault(); this.showPanel(); $('in-name').focus(); }
-    else if (k === '/') { e.preventDefault(); this.showPanel(); $('in-cmd').focus(); }
+    else if (k === 'n') { e.preventDefault(); this.showPanel(); this.setTab('play'); $('in-name').focus(); }
+    else if (k === '/') { e.preventDefault(); this.showPanel(); this.setTab('play'); $('in-cmd').focus(); }
+    else if (/^[1-6]$/.test(k)) { this.showPanel(); this.setTab(TAB_ORDER[+k - 1]); }
     else if (k === 'f' && g.selected) g.director.setMode('follow', { char: g.selected });
     else if (k === 'c' && g.selected) g.cinematic(g.selected);
     else if (k === 'p') g.director.setMode('plane');
@@ -452,6 +458,40 @@ export class UI {
     saveGame(this.game);
   }
   togglePanel() { document.body.classList.toggle('panel-hidden'); }
+
+  // ---------- sidebar tabs ----------
+  setupTabs() {
+    this.tabBtns = [...document.querySelectorAll('#tabs button')];
+    this.tabBtns.forEach(b => { b.onclick = () => this.setTab(b.dataset.tab); });
+    let saved = 'play';
+    try { saved = localStorage.getItem(TAB_KEY) || 'play'; } catch (e) { /* default */ }
+    this.setTab(saved);
+    // clicking a citizen or building in the game opens its details
+    this.game.on('picked', () => this.setTab('sel'));
+    this.game.on('select', () => this.renderTabs());
+    this.game.on('recorder', () => this.renderTabs());
+    this.game.on('tool', () => this.renderTabs());
+  }
+  setTab(name) {
+    if (!TAB_ORDER.includes(name)) name = 'play';
+    this.tab = name;
+    this.tabBtns.forEach(b => { b.classList.toggle('on', b.dataset.tab === name); b.setAttribute('aria-selected', b.dataset.tab === name); });
+    document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name));
+    $('tab-body').scrollTop = 0;
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) { /* not saved */ }
+    this.renderTabs();
+  }
+  // little signs on the tabs: who is selected, recording, a build tool in use
+  renderTabs() {
+    if (!this.tabBtns) return;
+    const g = this.game, s = g.selected, b = g.selectedBuilding;
+    const sel = this.tabBtns.find(x => x.dataset.tab === 'sel');
+    sel.querySelector('.ti').textContent = s ? s.def.emoji : b ? b.emoji : '👤';
+    sel.querySelector('.tl').textContent = s ? s.name.replace(/^@/, '') : b ? b.displayName() : t('tab_sel');
+    sel.querySelector('.badge').classList.toggle('on', !!(s || b) && this.tab !== 'sel');
+    this.tabBtns.find(x => x.dataset.tab === 'film').querySelector('.badge').classList.toggle('rec', !!g.recorder?.recording);
+    this.tabBtns.find(x => x.dataset.tab === 'build').querySelector('.badge').classList.toggle('on', !!g.editor.tool && this.tab !== 'build');
+  }
   showPanel() { document.body.classList.remove('panel-hidden'); }
   addLog(msg) {
     if (!msg) return;
@@ -679,7 +719,7 @@ export class UI {
       row.appendChild(nm);
       row.appendChild(el('small', null, c.job === 'none' ? '' : `${JOBS[c.job].emoji} ${t('job_' + c.job)}`));
       row.appendChild(el('span', 'st', (c.hurt ? '🤕' : '') + c.status()));
-      row.onclick = () => g.select(c, true);
+      row.onclick = () => { g.select(c, true); this.setTab('sel'); };
       box.appendChild(row);
     }
   }
@@ -694,7 +734,12 @@ export class UI {
     this.jobBtns = null;
     this.renderBuildMenu();
     if (b) return this.renderBuildingCard(b, card);
-    if (!c) { card.appendChild(el('p', 'hint', t('pickHint'))); return; }
+    if (!c) {
+      const em = el('div', 'sel-empty');
+      em.append(el('span', 'big', '👆'), el('p', null, t('pickHint')));
+      card.appendChild(em);
+      return;
+    }
 
     const head = el('div', 'sel-head');
     head.appendChild(el('span', 'sel-emoji', c.def.emoji));

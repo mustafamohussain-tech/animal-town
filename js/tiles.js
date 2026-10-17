@@ -33,6 +33,19 @@ export class TileMap {
   }
   claim(i, j, id) { this.rec(i, j).building = id; }
   release(i, j, id) { const r = this.get(i, j); if (r && r.building === id) r.building = null; }
+  // is this point on the driving part of a road (not the sidewalk, not grass)?
+  onAsphalt(x, z) {
+    const a = tileOf(x), b = tileOf(z);
+    if (!this.isRoad(a, b)) return !!this.game.curves.nearest(x, z, 3.2);
+    const lx = x - a * TILE, lz = z - b * TILE, band = HALF - SW;
+    const walk = (!this.isRoad(a, b - 1) && lz < -band) || (!this.isRoad(a, b + 1) && lz > band) ||
+      (!this.isRoad(a + 1, b) && lx > band) || (!this.isRoad(a - 1, b) && lx < -band);
+    return !walk;
+  }
+  // a crossing or T-junction (3+ roads meet)
+  isJunction(i, j) {
+    return this.isRoad(i, j) && (this.isRoad(i, j - 1) + this.isRoad(i, j + 1) + this.isRoad(i + 1, j) + this.isRoad(i - 1, j)) >= 3;
+  }
   roadList() { return [...this.tiles.entries()].filter(([, r]) => r.road).map(([k]) => k.split(',').map(Number)); }
 
   setRoad(i, j, on) {

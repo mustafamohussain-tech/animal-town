@@ -20,7 +20,7 @@ const STR = {
     myDesigns: 'My designs', newDesign: 'New design', fromPhoto: 'From a photo',
     // tools
     tools: 'Roads & decoration', tool_road: 'Road', tool_curve: 'Curved road', tool_bridge: 'Bridge', tool_erase: 'Eraser',
-    tool_lamp: 'Street lamp', tool_traffic: 'Traffic light', tool_tree: 'Tree', tool_bench: 'Bench', tool_flowers: 'Flowers', toolDone: 'Done',
+    propRoadside: 'Put it beside a road, on the sidewalk', propJunction: 'Traffic lights go on the corners of a crossing', propOffRoad: 'Not in the middle of the road', tab_play: 'Control', tab_sel: 'Selected', tab_build: 'Build', tab_people: 'Residents', tab_film: 'Filming', tab_town: 'Town', dataT: 'Save & publish', resetTitle: 'Fresh start', resetHint: 'Done testing? Clear the town and start for real. Your own designs, music and recording settings stay.', resetOpen: 'Start over…', resetBackup: 'Download a backup first', resetSure: 'I understand this cannot be undone', resetTown: 'Clear the town', resetTownSub: 'All residents and buildings go; the day counter keeps counting', resetAll: 'Completely new start', resetAllSub: 'Everything goes, the counter goes back to day 1', tool_lamp: 'Street lamp', tool_traffic: 'Traffic light', tool_tree: 'Tree', tool_bench: 'Bench', tool_flowers: 'Flowers', toolDone: 'Done',
     hint_road: 'Click and drag on the map to draw roads. Right mouse = turn the camera.',
     hint_erase: 'Click / drag to remove roads, curved roads, lamps and trees.',
     hint_curve: 'Click to add points. Double-click or Enter = finish, Backspace = undo point, Esc = cancel.',
@@ -126,7 +126,7 @@ const STR = {
     placeHint: 'حرّك الماوس فوق الخريطة: أخضر = مناسب، أحمر = مشغول. R = تدوير، نقرة = بناء، Esc = إلغاء.',
     myDesigns: 'تصاميمي', newDesign: 'تصميم جديد', fromPhoto: 'من صورة',
     tools: 'الطرق والزينة', tool_road: 'شارع', tool_curve: 'شارع منحني', tool_bridge: 'جسر', tool_erase: 'ممحاة',
-    tool_lamp: 'عمود إنارة', tool_traffic: 'إشارة مرور', tool_tree: 'شجرة', tool_bench: 'مقعد', tool_flowers: 'ورود', toolDone: 'تم',
+    propRoadside: 'ضعه بجانب الشارع على الرصيف', propJunction: 'إشارة المرور توضع على زوايا التقاطع فقط', propOffRoad: 'ليس في وسط الشارع', tab_play: 'التحكم', tab_sel: 'المحدد', tab_build: 'البناء', tab_people: 'السكان', tab_film: 'التصوير', tab_town: 'المدينة', dataT: 'الحفظ والنشر', resetTitle: 'بداية جديدة', resetHint: 'خلّصت التجارب؟ امسح المدينة وابدأ بشكل رسمي. تصاميمك والموسيقى وإعدادات التسجيل تبقى.', resetOpen: 'ابدأ من جديد…', resetBackup: 'نزّل نسخة احتياطية أولاً', resetSure: 'أفهم أنه لا يمكن التراجع', resetTown: 'مسح المدينة', resetTownSub: 'يُحذف كل السكان والبنايات، وعدّاد الأيام يستمر', resetAll: 'بداية جديدة كاملة', resetAllSub: 'يُحذف كل شيء ويرجع العدّاد إلى اليوم 1', tool_lamp: 'عمود إنارة', tool_traffic: 'إشارة مرور', tool_tree: 'شجرة', tool_bench: 'مقعد', tool_flowers: 'ورود', toolDone: 'تم',
     hint_road: 'اضغط واسحب على الخريطة لرسم الشوارع. الزر الأيمن = تدوير الكاميرا.',
     hint_erase: 'اضغط أو اسحب لمسح الشوارع والأعمدة والأشجار.',
     hint_curve: 'اضغط لإضافة نقاط. نقرتين أو Enter = إنهاء، Backspace = حذف نقطة، Esc = إلغاء.',

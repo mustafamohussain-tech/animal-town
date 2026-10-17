@@ -438,7 +438,7 @@ export class Game {
       let o = hits[0].object;
       while (o && o.userData.charId == null) o = o.parent;
       const c = o && this.getChar(o.userData.charId);
-      if (c) { this.select(c, true); return; }
+      if (c) { this.select(c, true); this.emit('picked', c); return; }
     }
     const bh = this.raycaster.intersectObjects(this.town.all.map(b => b.group), true);
     for (const h of bh) {
@@ -446,7 +446,7 @@ export class Game {
       let o = h.object;
       while (o && !this.town.all.some(b => b.group === o)) o = o.parent;
       const b = this.town.all.find(x => x.group === o);
-      if (b) { this.selectBuilding(b); return; }
+      if (b) { this.selectBuilding(b); this.emit('picked', b); return; }
     }
   }
 
