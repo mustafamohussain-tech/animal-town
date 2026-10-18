@@ -6,7 +6,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--txt); overflow: hidden;
   font-family: "Segoe UI", Tahoma, system-ui, Arial, sans-serif; }
 button, input { font: inherit; color: inherit; }
-#app { display: flex; height: 100vh; }
+#app { display: flex; height: 100vh; height: 100dvh; }   /* dvh: the part of a phone screen really visible (without the browser bars) */
 
 /* ---------- game stage (the 9:16 frame you record) ---------- */
 #stage { flex: 1; position: relative; min-width: 0; background: radial-gradient(circle at 50% 40%, #1b2132, #0d1017); }
@@ -246,11 +246,19 @@ dialog.dlg .file-btn { display: block; margin: 6px 0; }
 .pcard .pc-goal p { max-height: none; }
 .pcard::-webkit-scrollbar { width: 4px; }
 .pcard::-webkit-scrollbar-thumb { background: #c9cfbb; border-radius: 2px; }
-/* phones: a little smaller */
-@media (max-width: 520px) {
-  .pcard { font-size: 12.5px; max-height: 42%; }
-  .pc-photo { width: 52px; height: 52px; border-radius: 14px; }
-  .pc-who b { font-size: 16px; }
+/* phones: the card is a sheet along the bottom, easy to read and to scroll with a thumb */
+@media (max-width: 560px) {
+  .pcard, #frame[dir="rtl"] .pcard { left: 8px; right: 8px; width: auto; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    max-height: 46%; font-size: 14px; border-radius: 20px; padding: 0 16px 14px; }
+  .pcard .pc-top { margin: 0 -16px; padding: 14px 16px 8px; font-size: 11px; }
+  .pcard .pc-top button { font-size: 20px; padding: 4px 8px; }
+  .pc-photo { width: 56px; height: 56px; border-radius: 14px; }
+  .pc-who b { font-size: 17px; }
+  .pc-who a, .pc-who small, .pc-status { font-size: 13px; }
+  .pc-rows div { font-size: 13.5px; padding: 5px 0; }
+  .pc-goals, .pc-bel ul { font-size: 13.5px; }
+  .pc-goals li, .pc-bel li { padding: 3px 0; }
+  .pc-bel b { font-size: 14px; }
 }
 
 .cal-grid { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 8px; }
