@@ -34,6 +34,7 @@ if (params.has('view') || (online && !params.has('edit'))) {
   }, 90000);
 } else if (!(await loadGame(game))) game.newTown();
 game.bus.ensureStop(); // older towns get a bus stop too
+game.water.update(0); game.water.ensureBenches(); // older lakes get benches round their beach
 for (const p of [...game.props.list]) if (!p.natural && p.type !== 'busstop' && game.tiles.onAsphalt(p.x, p.z)) game.props.remove(p);
 const ui = new UI(game);
 // background music: browsers only allow sound after a click, so a saved "music on" starts at the first click

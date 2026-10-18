@@ -2,7 +2,7 @@
 // Road tiles connect to their neighbours automatically (straight, corner, T, crossing) with sidewalks,
 // lane lines, zebra crossings and street lamps.
 import * as THREE from 'three';
-import { TILE } from './path.js';
+import { TILE, NO_WALK } from './path.js';
 import { box, cyl, mesh, sphere, mergeStatic, shadows } from './util.js';
 import { NIGHT, addGlow } from './daynight.js';
 
@@ -49,32 +49,62 @@ export class TileMap {
     for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.isRoad(i + a, j + b)) this.rebuild(i + a, j + b);
   }
   hasBuilding(i, j) { return this.get(i, j)?.building != null; }
-  // walking costs of the cells of one tile (path.js): people keep to sidewalks, paths and building plots,
-  // cross roads at the zebra crossings, and only walk on grass when there is no other way
+  // What a road tile is part of: a plain street ('single'), a wide road of tiles side by side running
+  // east-west ('ew') or north-south ('ns'), or the middle of a crossing of wide roads ('core').
+  // zebra = the sides with a zebra crossing: every side of a plain junction, the end of a street that meets
+  // a wide road, and every approach of a wide road to a crossing (across its whole width)
+  roadShape(i, j) {
+    const R = (a, c) => this.isRoad(a, c), D = (a, c) => this.isDrivable(a, c);
+    const L = this.get(i, j)?.links;
+    const n = D(i, j - 1) || L?.n > 0, s = D(i, j + 1) || L?.s > 0, e = D(i + 1, j) || L?.e > 0, w = D(i - 1, j) || L?.w > 0;
+    const wideAt = (a, c) => R(a, c) && ((R(a, c - 1) && R(a + 1, c) && R(a + 1, c - 1)) || (R(a, c - 1) && R(a - 1, c) && R(a - 1, c - 1)) ||
+      (R(a, c + 1) && R(a + 1, c) && R(a + 1, c + 1)) || (R(a, c + 1) && R(a - 1, c) && R(a - 1, c + 1)));
+    const kindAt = (a, c) => {
+      if (!R(a, c)) return null;
+      if (!wideAt(a, c)) return 'single';
+      const run = (dx, dz) => { let k = 1; while (k <= 8 && R(a + dx * k, c + dz * k)) k++; return k - 1; };
+      const hr = 1 + run(1, 0) + run(-1, 0), vr = 1 + run(0, 1) + run(0, -1);
+      return vr <= 4 && hr > vr ? 'ew' : hr <= 4 && vr > hr ? 'ns' : 'core';
+    };
+    const kind = kindAt(i, j), zebra = new Set();
+    const sides = [['n', 0, -1, n], ['s', 0, 1, s], ['e', 1, 0, e], ['w', -1, 0, w]];
+    if (kind === 'single') {
+      const count = n + s + e + w;
+      for (const [d, a, c, has] of sides) if (has && (count >= 3 || (R(i + a, j + c) && kindAt(i + a, j + c) !== 'single'))) zebra.add(d);
+    } else if (kind === 'ew' || kind === 'ns') {
+      for (const [d, a, c] of sides) if ((kind === 'ew') === (a !== 0) && kindAt(i + a, j + c) === 'core') zebra.add(d);
+    }
+    return { kind, n, s, e, w, zebra };
+  }
+
+  // Where people walk (path.js): sidewalks, dirt roads, building plots, footpaths and beaches;
+  // they cross the street only on zebra crossings, and never walk on grass or on the driving part of a road
   stampCost(i, j) {
     const grid = this.game.world.grid, C = grid.cost, n = grid.n;
     const i0 = grid.cell(i * TILE - HALF), j0 = grid.cell(j * TILE - HALF);
     const r = this.get(i, j);
     const road = !!r?.road, plot = r?.building != null, dirt = !!r?.dirt;
-    const L = r?.links;
-    const N = road && (this.isDrivable(i, j - 1) || L?.n > 0), S = road && (this.isDrivable(i, j + 1) || L?.s > 0), E = road && (this.isDrivable(i + 1, j) || L?.e > 0), W = road && (this.isDrivable(i - 1, j) || L?.w > 0);
-    const junction = road && N + S + E + W >= 3, band = HALF - SW - .2;
+    const sh = road ? this.roadShape(i, j) : null;
+    const band = HALF - SW - .2, zb = HALF - 2.6;
     for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
       const ci = i0 + a, cj = j0 + b;
       if (ci < 0 || cj < 0 || ci >= n || cj >= n) continue;
-      let c = 5;
+      let c = NO_WALK;
       if (road) {
         const lx = grid.center(ci) - i * TILE, lz = grid.center(cj) - j * TILE;
-        const walk = (!N && lz < -band) || (!S && lz > band) || (!E && lx > band) || (!W && lx < -band) ||
-          (Math.abs(lx) > band && Math.abs(lz) > band);
-        c = walk ? 1 : junction && (Math.abs(lx) > HALF - 2.6 || Math.abs(lz) > HALF - 2.6) ? 2 : 6;
+        const walk = (!sh.n && lz < -band) || (!sh.s && lz > band) || (!sh.e && lx > band) || (!sh.w && lx < -band) ||
+          (sh.kind === 'single' && Math.abs(lx) > band && Math.abs(lz) > band);
+        const Z = sh.zebra;
+        const zebra = (Z.has('n') && lz < -zb) || (Z.has('s') && lz > zb) || (Z.has('e') && lx > zb) || (Z.has('w') && lx < -zb);
+        c = walk ? 1 : zebra ? 2 : NO_WALK;
       } else if (plot || dirt) c = 1;
       C[cj * n + ci] = c;
     }
-    // curved roads and footpaths drawn over this tile
+    // curved roads, parks, footpaths and beaches over this tile
     this.game.curves?.stampCost?.(i, j);
     this.game.parks?.stampCost?.(i, j);
     this.game.paths?.stampCost?.(i, j);
+    this.game.water?.stampCost?.(i, j);
   }
   // a spot on a sidewalk near p (where people stroll), or null when there are no roads around
   walkSpot(p, r = 3) {
@@ -146,6 +176,12 @@ export class TileMap {
     r.road = on;
     if (on) this.game.props.clearRect(i * TILE - HALF, j * TILE - HALF, i * TILE + HALF, j * TILE + HALF, true);
     for (let a = i - 2; a <= i + 2; a++) for (let c = j - 2; c <= j + 2; c++) this.rebuildSoon(a, c); // wide roads look at their neighbours' neighbours
+    // a wide road is known by how far it runs: tiles further along its row and column may change too
+    for (let d = -1; d <= 1; d++) for (let k = -10; k <= 10; k++) {
+      if (Math.abs(k) <= 2) continue;
+      this.rebuildIfChanged(i + k, j + d);
+      this.rebuildIfChanged(i + d, j + k);
+    }
     this.game.water?.roadChanged(i, j);   // roads over water are walkable (bridges), no reeds on the road
     this.game.curves?.refreshNear(i, j);  // a bridge's pillars step off the new road
     if (on) this.game.curves?.linkLater(i, j);   // a curved road ending here joins this road
@@ -166,6 +202,15 @@ export class TileMap {
   }
   // while a saved town loads, each tile is rebuilt once at the end (not 25 times)
   rebuildSoon(i, j) { if (this.loading) (this.pending ||= new Set()).add(K(i, j)); else this.rebuild(i, j); }
+  // only when its kind of road changed (a far tile of a wide road)
+  rebuildIfChanged(i, j) {
+    if (!this.isRoad(i, j)) return;
+    if (this.loading) { (this.pending ||= new Set()).add(K(i, j)); return; }
+    const sh = this.roadShape(i, j), sig = sh.kind + [...sh.zebra].sort().join('');
+    const r = this.get(i, j);
+    if (r.sig === sig) return;
+    this.rebuild(i, j);
+  }
   finishLoad() {
     const p = this.pending;
     this.pending = null;
@@ -187,6 +232,8 @@ export class TileMap {
   }
   rebuild(i, j) {
     this.stampCost(i, j);
+    const r0 = this.get(i, j);
+    if (r0?.road) { const sh = this.roadShape(i, j); r0.sig = sh.kind + [...sh.zebra].sort().join(''); }
     const k = K(i, j), ch = this.game.chunks;
     this.game.landMap?.mark();
     let it = this.items.get(k);
@@ -283,43 +330,53 @@ export class TileMap {
       cyl(.28, .24, .8, '#4a6b4a', a ? a * (HALF - .5) : 1.5, .54, a ? 1.5 : b * (HALF - .5), g, 10);
     }
 
-    // markings (none on wide areas: roads drawn side by side form a square, not crossings)
+    // markings: lane lines, and zebra crossings where people cross (see roadShape)
     const R = (a, c) => this.isRoad(a, c);
-    const wide = (n && e && R(i + 1, j - 1)) || (n && w && R(i - 1, j - 1)) || (s && e && R(i + 1, j + 1)) || (s && w && R(i - 1, j + 1));
-    const count = wide ? 0 : n + s + e + w;
-    const dashZ = (z0, z1) => { for (let z = z0; z < z1; z += 3) box(.18, .01, 1.6, LINE, 0, .065, z + .8, g); };
-    const dashX = (x0, x1) => { for (let x = x0; x < x1; x += 3) box(1.6, .01, .18, LINE, x + .8, .065, 0, g); };
-    if (count >= 3) {
-      const zebra = (dir) => {
-        for (let k2 = -3; k2 <= 3; k2++) {
-          const o = k2 * 1.15;
-          if (dir === 'n') box(.6, .012, 1.8, LINE, o, .066, -HALF + 1.2, g);
-          if (dir === 's') box(.6, .012, 1.8, LINE, o, .066, HALF - 1.2, g);
-          if (dir === 'e') box(1.8, .012, .6, LINE, HALF - 1.2, .066, o, g);
-          if (dir === 'w') box(1.8, .012, .6, LINE, -HALF + 1.2, .066, o, g);
-        }
-      };
-      if (n) zebra('n'); if (s) zebra('s'); if (e) zebra('e'); if (w) zebra('w');
-    } else if (!wide) {
-      if (n) dashZ(-HALF, -.3);
-      if (s) dashZ(.3, HALF);
-      if (e) dashX(.3, HALF);
-      if (w) dashX(-HALF, -.3);
-    } else {
-      // roads drawn side by side = one wide road with several lanes: which way does it run?
-      const run = (dx, dz) => { let k = 1; while (k <= 8 && R(i + dx * k, j + dz * k)) k++; return k - 1; };
-      const hr = 1 + run(1, 0) + run(-1, 0), vr = 1 + run(0, 1) + run(0, -1);
-      // a wide road is at most 4 tiles across; long in both directions = a crossing
-      if (hr >= 3 && vr <= 4 && hr > vr) {
-        // runs east-west: a dashed line in the middle of every lane pair, a solid line between the tiles
-        dashX(-HALF, HALF - .5);
-        if (n) box(TILE, .012, .16, LINE, 0, .066, -HALF, g);
-      } else if (vr >= 3 && hr <= 4 && vr > hr) {
-        dashZ(-HALF, HALF - .5);
-        if (w) box(.16, .012, TILE, LINE, -HALF, .066, 0, g);
+    const sh = this.roadShape(i, j), Z = sh.zebra;
+    this.get(i, j).sig = sh.kind + [...Z].sort().join('');
+    const dashZ = (z0, z1) => { for (let z = z0; z < z1 - 1; z += 3) box(.18, .01, 1.6, LINE, 0, .065, z + .8, g); };
+    const dashX = (x0, x1) => { for (let x = x0; x < x1 - 1; x += 3) box(1.6, .01, .18, LINE, x + .8, .065, 0, g); };
+    // a zebra crossing along one side; on a wide road it spans the whole tile so it joins the next lane's
+    const zebra = (dir, full) => {
+      const m = full ? 5 : 3;
+      for (let k2 = -m; k2 <= m; k2++) {
+        const o = k2 * 1.15;
+        if (dir === 'n') box(.6, .012, 1.8, LINE, o, .066, -HALF + 1.2, g);
+        if (dir === 's') box(.6, .012, 1.8, LINE, o, .066, HALF - 1.2, g);
+        if (dir === 'e') box(1.8, .012, .6, LINE, HALF - 1.2, .066, o, g);
+        if (dir === 'w') box(1.8, .012, .6, LINE, -HALF + 1.2, .066, o, g);
       }
-      // (where two wide roads cross, the middle stays plain asphalt)
+      // a stop line just before it
+      const sl = HALF - 2.6;
+      if (dir === 'n') box(full ? TILE : 7, .012, .3, LINE, 0, .066, -sl, g);
+      if (dir === 's') box(full ? TILE : 7, .012, .3, LINE, 0, .066, sl, g);
+      if (dir === 'e') box(.3, .012, full ? TILE : 7, LINE, sl, .066, 0, g);
+      if (dir === 'w') box(.3, .012, full ? TILE : 7, LINE, -sl, .066, 0, g);
+    };
+    const cut = d => (Z.has(d) ? 2.7 : 0);
+    if (sh.kind === 'single') {
+      const count = n + s + e + w;
+      for (const d of Z) zebra(d, false);
+      if (count < 3) {
+        if (n) dashZ(-HALF + cut('n'), -.3);
+        if (s) dashZ(.3, HALF - cut('s'));
+        if (e) dashX(.3, HALF - cut('e'));
+        if (w) dashX(-HALF + cut('w'), -.3);
+      }
+    } else if (sh.kind === 'ew') {
+      // one wide road running east-west: a dashed line in the middle of each tile (two lanes),
+      // a solid line between the tiles; both stop at the zebra crossings
+      const x0 = -HALF + cut('w'), x1 = HALF - cut('e');
+      dashX(x0, x1);
+      if (R(i, j - 1)) box(x1 - x0, .012, .16, LINE, (x0 + x1) / 2, .066, -HALF, g);
+      for (const d of Z) zebra(d, true);
+    } else if (sh.kind === 'ns') {
+      const z0 = -HALF + cut('n'), z1 = HALF - cut('s');
+      dashZ(z0, z1);
+      if (R(i - 1, j)) box(.16, .012, z1 - z0, LINE, -HALF, .066, (z0 + z1) / 2, g);
+      for (const d of Z) zebra(d, true);
     }
+    // ('core': the middle of a crossing of wide roads stays plain asphalt)
 
     // over water the road becomes a bridge: railings on the open sides
     if (this.game.water?.tileWet(i, j, 0)) {

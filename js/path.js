@@ -4,6 +4,8 @@ export const TILE = 12;          // one road / building tile = 12 x 12 units
 export const MAX_R = 75;         // land can grow to 151 x 151 tiles (room for 10,000+ buildings)
 export const GMIN = -(MAX_R * TILE + TILE / 2);
 export const GN = -GMIN * 2;
+// walking cost of a cell where people never walk (grass, the driving part of roads): see tiles.stampCost
+export const NO_WALK = 255;
 
 class Heap {
   constructor() { this.k = []; this.f = []; }
@@ -46,8 +48,10 @@ export class Grid {
     this.n = GN;
     this.block = new Uint16Array(n);
     this.wet = new Uint8Array(n);   // water (see water.js)
-    // how much people dislike walking on a cell: 1 sidewalk / path / building plot, 5 grass, 6 asphalt (see tiles.stampCost)
-    this.cost = new Uint8Array(n).fill(5);
+    // where people walk: 1 sidewalk / dirt road / path / beach / building plot, 2 zebra crossing,
+    // NO_WALK grass and the driving part of roads (see tiles.stampCost)
+    this.cost = new Uint8Array(n).fill(NO_WALK);
+    this.soft = false;   // true for a moment when there is no walkable way at all (then grass is allowed)
     // search memory only for a window around each walk (not the whole map): a big town stays light
     const W = WIN * WIN;
     this.g = new Float32Array(W);
@@ -67,7 +71,7 @@ export class Grid {
   cell(v) { return Math.floor(v - GMIN); }
   center(i) { return GMIN + i + .5; }
   ok(i, j) { return i >= this.lo && j >= this.lo && i <= this.hi && j <= this.hi; }
-  free(i, j) { const k = j * GN + i; return this.ok(i, j) && this.block[k] === 0 && !this.wet[k]; }
+  free(i, j) { const k = j * GN + i; return this.ok(i, j) && this.block[k] === 0 && !this.wet[k] && (this.soft || this.cost[k] !== NO_WALK); }
   freeAt(x, z) { return this.free(this.cell(x), this.cell(z)); }
 
   // block (+1) or unblock (-1) every cell whose centre lies inside the rectangle
@@ -86,13 +90,15 @@ export class Grid {
     }
   }
 
+  // the closest free cell, ring by ring (only the ring's edge is checked: fast for big rings)
   nearestFree(i, j, maxR = 15) {
-    for (let r = 0; r <= maxR; r++) {
-      for (let dj = -r; dj <= r; dj++) {
-        for (let di = -r; di <= r; di++) {
-          if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
-          if (this.free(i + di, j + dj)) return [i + di, j + dj];
-        }
+    if (this.free(i, j)) return [i, j];
+    for (let r = 1; r <= maxR; r++) {
+      for (let d = -r; d <= r; d++) {
+        if (this.free(i + d, j - r)) return [i + d, j - r];
+        if (this.free(i + d, j + r)) return [i + d, j + r];
+        if (this.free(i - r, j + d)) return [i - r, j + d];
+        if (this.free(i + r, j + d)) return [i + r, j + d];
       }
     }
     return null;
@@ -108,7 +114,7 @@ export class Grid {
     }
     return true;
   }
-  costAt(x, z) { const i = this.cell(x), j = this.cell(z); return (i < 0 || j < 0 || i >= GN || j >= GN) ? 5 : this.cost[j * GN + i]; }
+  costAt(x, z) { const i = this.cell(x), j = this.cell(z), c = (i < 0 || j < 0 || i >= GN || j >= GN) ? NO_WALK : this.cost[j * GN + i]; return c === NO_WALK && this.soft ? 8 : c; }
   lineFree(ax, az, bx, bz) {
     const n = Math.ceil(Math.hypot(bx - ax, bz - az) / .35);
     for (let s = 1; s <= n; s++) {
@@ -119,6 +125,15 @@ export class Grid {
 
   // returns a list of {x,z} waypoints ending exactly at the target
   findPath(sx, sz, tx, tz) {
+    // people walk only on sidewalks, crossings, dirt roads, paths and beaches; someone standing on the grass
+    // first steps to the nearest of those. Only when there is none at all, grass is allowed.
+    this.soft = false;
+    const ci = this.cell(sx), cj = this.cell(sz), ki = this.cell(tx), kj = this.cell(tz);
+    const reach = (i, j) => this.free(i, j) || !!this.nearestFree(i, j, 60);
+    if (!reach(ci, cj) || !reach(ki, kj)) this.soft = true;
+    try { return this.search(sx, sz, tx, tz); } finally { this.soft = false; }
+  }
+  search(sx, sz, tx, tz) {
     const target = { x: tx, z: tz };
     this.lastCut = false;
     const cl = v => Math.min(this.hi, Math.max(this.lo, v));
@@ -126,8 +141,8 @@ export class Grid {
     let ti = cl(this.cell(tx)), tj = cl(this.cell(tz));
     // a target inside a wall: stop at the nearest free spot instead of walking into it
     let end = target;
-    if (!this.free(ti, tj)) { const nf = this.nearestFree(ti, tj); if (!nf) return [{ x: sx, z: sz }]; [ti, tj] = nf; end = { x: this.center(ti), z: this.center(tj) }; }
-    if (!this.free(si, sj)) { const nf = this.nearestFree(si, sj, 4); if (nf) [si, sj] = nf; }
+    if (!this.free(ti, tj)) { const nf = this.nearestFree(ti, tj, 60); if (!nf) return [{ x: sx, z: sz }]; [ti, tj] = nf; end = { x: this.center(ti), z: this.center(tj) }; }
+    if (!this.free(si, sj)) { const nf = this.nearestFree(si, sj, 60); if (nf) [si, sj] = nf; }
     // a very long walk goes part of the way (it continues from there later)
     const LIM = (WIN - 2 * 40) / 2;
     if (Math.abs(ti - si) > LIM || Math.abs(tj - sj) > LIM) {
@@ -174,7 +189,7 @@ export class Grid {
         const ni = i + dx, nj = j + dz;
         if (ni < x0 || ni > x1 || nj < z0 || nj > z1 || !this.free(ni, nj)) continue;
         if (dx && dz && (!this.free(i + dx, j) || !this.free(i, j + dz))) continue;
-        const nk = nj * GN + ni, ln = L(nk), ng = g[lk] + cost * C[nk];
+        const nk = nj * GN + ni, ln = L(nk), ng = g[lk] + cost * (C[nk] === NO_WALK ? 8 : C[nk]);
         if (seen[ln] !== S || ng < g[ln]) { seen[ln] = S; g[ln] = ng; from[ln] = k; heap.push(nk, ng + h(nk)); }
       }
     }

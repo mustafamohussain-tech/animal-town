@@ -2,7 +2,7 @@
 // Moving water, sandy banks, reeds, rocks, lily pads, a wooden pier, a rowing boat, ducks and jumping fish.
 // People can't walk on water (roads drawn across become bridges); they fish from the bank and swim in lakes.
 import * as THREE from 'three';
-import { TILE } from './path.js';
+import { TILE, NO_WALK } from './path.js';
 import { tileOf } from './tiles.js';
 import { sampleCurve } from './curves.js';
 import { box, cyl, mesh, sphere, mergeStatic, shadows, rand, pick } from './util.js';
@@ -10,6 +10,9 @@ import { box, cyl, mesh, sphere, mergeStatic, shadows, rand, pick } from './util
 export const WATER_Y = .05;
 const SAND_Y = .025;
 export const RIVER_W = { small: 6, medium: 10, wide: 16 };
+const BEACH = 4.2;   // the sandy beach around a lake: wide enough to stroll round it and put benches on
+const BANK = 2.6;    // the sandy bank along a river
+const WUV = .08;     // water texture scale, in world space: where two waters meet they look like one
 
 // one ripple picture, used by two textures that move differently (lake drift, river flow)
 let rippleCanvas = null;
@@ -18,9 +21,7 @@ function rippleTexture() {
     const c = rippleCanvas = document.createElement('canvas');
     c.width = c.height = 256;
     const x = c.getContext('2d');
-    const gr = x.createLinearGradient(0, 0, 256, 256);
-    gr.addColorStop(0, '#4fb3df'); gr.addColorStop(.5, '#3fa2d2'); gr.addColorStop(1, '#4cb0dc');
-    x.fillStyle = gr;
+    x.fillStyle = '#46abd9';   // one even colour, so the picture repeats without visible squares
     x.fillRect(0, 0, 256, 256);
     for (let k = 0; k < 260; k++) {
       const px = Math.random() * 256, py = Math.random() * 256, w = 6 + Math.random() * 22;
@@ -38,7 +39,9 @@ function rippleTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const TEX = { lake: rippleTexture(), river: rippleTexture() };
+// one moving texture for all water (lakes and rivers join without a seam)
+const TEX = { lake: rippleTexture() };
+TEX.river = TEX.lake;
 // layers: land (pushed back most) < sand < water < roads
 // solid (not see-through): where two rivers or a river and a lake overlap it looks like one water surface
 const waterMat = tex => new THREE.MeshStandardMaterial({ color: '#ffffff', map: tex, roughness: .12, metalness: .08,
@@ -93,19 +96,24 @@ export function roundCorners(pts, it = 3) {
   }
   return p;
 }
-function strip(S, a, b, y, material, vScale) {
+// a band along the curve from offset a to b (numbers, or functions of the sample index for a band
+// that gets wider, like a river mouth); world = texture laid in world space (water)
+function strip(S, a, b, y, material, vScale, world = false) {
   const pos = [], uv = [], idx = [];
+  const A = typeof a === 'function' ? a : () => a, B = typeof b === 'function' ? b : () => b;
   S.forEach((s, k) => {
     // in a tight bend the inner edge is pulled in so the band never folds over itself
-    let ia = a, ib = b;
+    let ia = A(k), ib = B(k);
     const p0 = S[k - 1] || s, p1 = S[k + 1] || s;
     const dtx = (p1.tx ?? 0) - (p0.tx ?? 0), dtz = (p1.tz ?? 0) - (p0.tz ?? 0), turn = Math.hypot(dtx, dtz);
     if (turn > 1e-4) {
       const R = Math.hypot(p1.x - p0.x, p1.z - p0.z) / turn, toward = dtx * s.nx + dtz * s.nz;
       if (toward > 0) ib = Math.min(ib, R * .85); else ia = Math.max(ia, -R * .85);
     }
-    pos.push(s.x + s.nx * ia, y, s.z + s.nz * ia, s.x + s.nx * ib, y, s.z + s.nz * ib);
-    uv.push(0, s.d * vScale, 1, s.d * vScale);
+    const ax = s.x + s.nx * ia, az = s.z + s.nz * ia, bx = s.x + s.nx * ib, bz = s.z + s.nz * ib;
+    pos.push(ax, y, az, bx, y, bz);
+    if (world) uv.push(ax * WUV, -az * WUV, bx * WUV, -bz * WUV);
+    else uv.push(0, s.d * vScale, 1, s.d * vScale);
   });
   for (let k = 0; k < S.length - 1; k++) { const i = k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
   const g = new THREE.BufferGeometry();
@@ -133,6 +141,16 @@ function segDist(px, pz, a, b) {
   return Math.hypot(px - a.x - dx * u, pz - a.z - dz * u);
 }
 
+// a circle of water in world-space texture (the round end of a river where it joins other water)
+function waterDisc(x, y, z, r) {
+  const geo = new THREE.CircleGeometry(r, 28).rotateX(-Math.PI / 2).translate(x, y, z);
+  const p = geo.attributes.position, uv = geo.attributes.uv;
+  for (let k = 0; k < p.count; k++) uv.setXY(k, p.getX(k) * WUV, -p.getZ(k) * WUV);
+  const m = new THREE.Mesh(geo, MAT.river);
+  m.userData.ownGeo = true;
+  return m;
+}
+const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 function edgeDist(poly, x, z) {
   let d = Infinity;
   for (let k = 0; k < poly.length; k++) d = Math.min(d, segDist(x, z, poly[k], poly[(k + 1) % poly.length]));
@@ -242,10 +260,68 @@ export class Water {
     this.game.scene.add(w.group);
     this.list.push(w);
     this.changed(w);
-    this.touching(w).forEach(o => (this.rebuildSet ||= new Set()).add(o));   // their reeds at the joint go away
+    this.touching(w).forEach(o => (this.rebuildSet ||= new Set()).add(o));   // their reeds at the joint go away; a river mouth opens up
     // trees and street objects that ended up in the water go away
     for (const p of [...this.game.props.list]) if (p.type !== 'busstop' && this.wetIn(w, p.x, p.z, 1)) this.game.props.remove(p);
+    // a new lake gets benches around its beach (a lake from a saved town already has them)
+    if (w.kind === 'lake' && o.id == null && !this.game.loading) this.plantBenches(w);
     return w;
+  }
+  // benches on the beach, facing the water, all the way round
+  plantBenches(w) {
+    const g = this.game, P = g.props, T = g.tiles, n = w.poly.length;
+    let last = -1e9, run = 0;
+    for (let k = 0; k < n; k++) {
+      const a = w.poly[k], b = w.poly[(k + 1) % n];
+      run += Math.hypot(b.x - a.x, b.z - a.z);
+      if (run - last < 15) continue;
+      const q = w.nrm[k], x = a.x + q.x * 3, z = a.z + q.z * 3;
+      if (T.isRoadish(tileOf(x), tileOf(z)) || T.hasBuilding(tileOf(x), tileOf(z))) continue;
+      if (this.list.some(o => o !== w && this.wetIn(o, x, z, 2.5)) || this.wetIn(w, x, z, 1.5)) continue;
+      if (P.nearest(x, z, 3)) continue;
+      if (P.add('bench', x, z, Math.atan2(-q.x, -q.z))) last = run;
+    }
+  }
+  // older lakes without benches get them (once)
+  ensureBenches() {
+    for (const w of this.list) {
+      if (w.kind !== 'lake') continue;
+      const has = this.game.props.list.some(p => p.type === 'bench' && !this.wetIn(w, p.x, p.z) && this.wetIn(w, p.x, p.z, BEACH + 1));
+      if (!has) this.plantBenches(w);
+    }
+  }
+  // the beach / bank: people walk here (and on the pier)
+  onBeach(w, x, z) {
+    if (w.pierSeg && segDist(x, z, w.pierSeg[0], w.pierSeg[1]) < 1.1) return true;
+    if (w.kind === 'lake') return !inPoly(w.poly, x, z) && edgeDist(w.poly, x, z) < BEACH;
+    const hw = w.width / 2;
+    let d = Infinity;
+    for (let k = 0; k < w.S.length - 1; k++) d = Math.min(d, segDist(x, z, w.S[k], w.S[k + 1]));
+    return d >= hw - .2 && d < hw + BANK;
+  }
+  // walking costs of a tile (tiles.stampCost calls this last): the beach is like a sidewalk
+  stampCost(i, j) {
+    if (!this.list.length) return;
+    const grid = this.game.world.grid, C = grid.cost, n = grid.n;
+    const x0 = i * TILE - TILE / 2, z0 = j * TILE - TILE / 2;
+    const near = this.list.filter(w => { if (!w.poly && !w.S) return false; const b = this.bounds(w); return !(b.x1 < x0 || b.x0 > x0 + TILE || b.z1 < z0 || b.z0 > z0 + TILE); });
+    if (!near.length) return;
+    const i0 = grid.cell(x0), j0 = grid.cell(z0);
+    for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
+      const ci = i0 + a, cj = j0 + b;
+      if (ci < 0 || cj < 0 || ci >= n || cj >= n) continue;
+      const k = cj * n + ci;
+      if (C[k] !== NO_WALK) continue;
+      const x = grid.center(ci), z = grid.center(cj);
+      if (near.some(w => this.onBeach(w, x, z))) C[k] = 1;
+    }
+  }
+  // a spot on the beach near p (for a stroll round the lake)
+  beachSpot(p) {
+    const lakes = this.list.filter(w => w.kind === 'lake');
+    if (!lakes.length) return null;
+    const w = this.nearest(p, 'lake'), k = Math.floor(Math.random() * w.poly.length), q = w.poly[k], m = w.nrm[k];
+    return { x: q.x + m.x * 1.4, z: q.z + m.z * 1.4 };
   }
   // other water bodies this one overlaps (a river flowing into another river or a lake)
   touching(w) {
@@ -276,10 +352,13 @@ export class Water {
     this.dirty = true;
     const b = this.bounds(w), T = this.game.tiles;
     this.game.curves?.refreshIn(b);   // curved roads over this water lift up (or come down)
-    for (let i = tileOf(b.x0) - 2; i <= tileOf(b.x1) + 2; i++) for (let j = tileOf(b.z0) - 2; j <= tileOf(b.z1) + 2; j++) if (T.isRoad(i, j)) T.rebuild(i, j);
+    // roads around rebuild (bridges); every tile's walking costs too (the beach)
+    for (let i = tileOf(b.x0) - 2; i <= tileOf(b.x1) + 2; i++) for (let j = tileOf(b.z0) - 2; j <= tileOf(b.z1) + 2; j++) {
+      if (T.isRoad(i, j)) T.rebuild(i, j); else T.stampCost(i, j);
+    }
   }
   bounds(w) {
-    const m = w.kind === 'river' ? w.width / 2 + 3 : 3;
+    const m = w.kind === 'river' ? w.width / 2 + BANK + 1 : BEACH + 1;
     const xs = (w.poly || w.pts).map(p => p.x), zs = (w.poly || w.pts).map(p => p.z);
     return { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m };
   }
@@ -306,8 +385,9 @@ export class Water {
     if (w.kind === 'lake') {
       const { poly, nrm, c } = lakeOutline(w.pts);
       Object.assign(w, { poly, nrm, c });
-      g.add(flatShape(poly.map((p, k) => ({ x: p.x + nrm[k].x * 1.8, z: p.z + nrm[k].z * 1.8 })), SAND_Y, MAT.sand, 1));
-      g.add(flatShape(poly, WATER_Y - (w.id % 6) * .002, MAT.lake, .08));   // each body a hair apart: no flicker where they meet
+      g.add(flatShape(poly.map((p, k) => ({ x: p.x + nrm[k].x * BEACH, z: p.z + nrm[k].z * BEACH })), SAND_Y, MAT.sand, 1));
+      // all water at the same height with the same world-space ripples: where a river runs in, it is one surface
+      g.add(flatShape(poly, WATER_Y, MAT.lake, WUV));
       const n = poly.length;
       for (let k = 0; k < n; k += Math.max(3, Math.floor(n / 12))) {
         const p = poly[k], q = nrm[k];
@@ -338,16 +418,20 @@ export class Water {
       g.add(w.boat);
       for (let k = 0; k < 3; k++) { const d = makeDuck(); d.userData.u = Math.random(); d.userData.sp = rand(.006, .012); g.add(d); w.ducks.push(d); }
     } else {
-      const S = w.S = sampleCurve(roundCorners(w.pts), false), hw = w.width / 2;
-      g.add(strip(S, -hw - 1.8, hw + 1.8, SAND_Y, MAT.sand, .1));
-      g.add(strip(S, -hw, hw, WATER_Y - (w.id % 6) * .002, MAT.river, .08));
+      const S = w.S = sampleCurve(roundCorners(w.pts), false), hw = w.width / 2, len = S[S.length - 1].d;
+      // where a river flows into a lake its mouth opens wider (like a real river mouth), so the banks
+      // curve smoothly into the lake's beach
+      const lakeAt = s => this.list.find(o => o !== w && o.kind === 'lake' && this.wetIn(o, s.x, s.z, 1));
+      const mouth0 = lakeAt(S[0]), mouth1 = lakeAt(S[S.length - 1]);
+      const wf = S.map(s => 1 + .9 * Math.max(mouth0 ? smooth(1 - s.d / 16) : 0, mouth1 ? smooth(1 - (len - s.d) / 16) : 0));
+      w.mouths = [];   // (the wider water counts as water: nobody walks there)
+      S.forEach((s, k) => { if (wf[k] > 1.05 && k % 2 === 0) w.mouths.push({ x: s.x, z: s.z, r: hw * wf[k] }); });
+      g.add(strip(S, k => -hw * wf[k] - BANK, k => hw * wf[k] + BANK, SAND_Y, MAT.sand, .1));
+      g.add(strip(S, k => -hw * wf[k], k => hw * wf[k], WATER_Y, MAT.river, .08, true));
       // an end that flows into other water gets a round end, so the joint is smooth
-      for (const s of [S[0], S[S.length - 1]]) {
+      for (const [s, f] of [[S[0], wf[0]], [S[S.length - 1], wf[wf.length - 1]]]) {
         if (!this.list.some(o => o !== w && this.wetIn(o, s.x, s.z, 1))) continue;
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(hw + .4, 28).rotateX(-Math.PI / 2), MAT.river);
-        disc.position.set(s.x, WATER_Y - (w.id % 6) * .002, s.z);
-        disc.userData.ownGeo = true;
-        g.add(disc);
+        g.add(waterDisc(s.x, WATER_Y, s.z, hw * f + .4));
       }
       S.forEach((s, k) => {
         if (k % 6 !== 3) return;
@@ -372,6 +456,8 @@ export class Water {
     }
     const S = w.S, r = w.width / 2 + margin;
     for (let k = 0; k < S.length - 1; k++) if (segDist(x, z, S[k], S[k + 1]) < r) return true;
+    // the wider mouth where it runs into a lake
+    for (const m of w.mouths || []) if (Math.hypot(x - m.x, z - m.z) < m.r + margin) return true;
     return false;
   }
   wetAt(x, z, margin = 0) { return this.list.some(w => this.wetIn(w, x, z, margin)); }
@@ -479,7 +565,6 @@ export class Water {
     if (!this.list.length) return;
     TEX.lake.offset.x += dt * .012;
     TEX.lake.offset.y += dt * .007;
-    TEX.river.offset.y -= dt * .22;
     const t = this.game.time;
     for (const w of this.list) {
       if (w.kind !== 'lake') continue;

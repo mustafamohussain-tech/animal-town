@@ -87,18 +87,8 @@ export class Parks {
     }
     return false;
   }
-  // walking on park grass is pleasant (paths are even better)
-  stampCost(i, j) {
-    const grid = this.game.world.grid, C = grid.cost, n = grid.n, key = i + ',' + j;
-    for (const p of this.list) {
-      if (!p.tiles.has(key)) continue;
-      const i0 = grid.cell(i * TILE - TILE / 2), j0 = grid.cell(j * TILE - TILE / 2);
-      for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
-        const ci = i0 + a, cj = j0 + b, k = cj * n + ci;
-        if (C[k] > 2 && inPoly(p.poly, grid.center(ci), grid.center(cj))) C[k] = 2;
-      }
-    }
-  }
+  // the lawn is grass: people stay on the park's paths (paths.js)
+  stampCost() {}
 
   // a new park plants itself
   plant(p) {

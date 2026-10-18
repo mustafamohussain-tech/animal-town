@@ -436,6 +436,31 @@ export function parkActs(c) {
   return s ? [goTo(s.x, s.z), wait(rand(2, 4), 'idle')] : null;
 }
 
+// ---------- by the lake: a rest on a bench looking at the water, or a walk along the beach ----------
+export function lakeActs(c) {
+  const g = c.game, W = g.water, lakes = W.list.filter(w => w.kind === 'lake');
+  if (!lakes.length) return null;
+  const pos = c.root.position;
+  const near = lakes.filter(w => Math.hypot(w.c.x - pos.x, w.c.z - pos.z) < 160);
+  if (!near.length) return null;
+  const benches = g.props.list.filter(b => b.type === 'bench' && !b.user && near.some(w => !W.wetIn(w, b.x, b.z) && W.wetIn(w, b.x, b.z, 6)));
+  benches.sort((a, b) => Math.hypot(a.x - pos.x, a.z - pos.z) - Math.hypot(b.x - pos.x, b.z - pos.z));
+  const b = Math.random() < .55 && benches.slice(0, 5)[Math.floor(Math.random() * Math.min(5, benches.length))];
+  if (b) {
+    const fx = Math.sin(b.rot), fz = Math.cos(b.rot), front = { x: b.x + fx * 1.2, z: b.z + fz * 1.2 };
+    return [goTo(front.x, front.z), {
+      name: 'bench',
+      start(x) { b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(10, 20); if (Math.random() < .35) x.say(pick(['😌', '🌊', '🦆', '☀️'])); },
+      update(x, dt) { this.left -= dt; return this.left <= 0; },
+      end(x) { b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
+    }];
+  }
+  // a stroll round the lake: two or three spots along the beach
+  const list = [];
+  for (let k = 0; k < 3; k++) { const s = W.beachSpot(pos); if (s) list.push(goTo(s.x, s.z), wait(rand(1, 3), 'idle')); }
+  return list.length ? list : null;
+}
+
 // ---------- the "brain": what to do when nobody gives orders ----------
 // ---------- the five prayers (by the town's clock): people go to the nearest mosque ----------
 const PRAYERS = [4.75, 12.1, 15.4, 17.9, 19.4];
@@ -597,6 +622,7 @@ function idleRoutine(c) {
     if (o) { o.command([chatAct(c, false)], false); return [chatAct(o, true)]; }
   }
   if (!night && g.parks.list.length && Math.random() < .14) { const l = parkActs(c); if (l) return l; }
+  if (!night && g.water.list.length && Math.random() < .12) { const l = lakeActs(c); if (l) return l; }
   if (!night && g.water.list.length && Math.random() < .09) {
     const r2 = Math.random();
     const l = r2 < .45 ? swimActs(c) : r2 < .65 ? boatActs(c) : waterFishActs(c);

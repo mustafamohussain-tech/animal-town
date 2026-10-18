@@ -1,6 +1,6 @@
 // Free curved roads and bridges (a road raised over other roads, with ramps, pillars and railings).
 import * as THREE from 'three';
-import { TILE } from './path.js';
+import { TILE, NO_WALK } from './path.js';
 import { box, cyl, mat, sideMat, mergeStatic, shadows, dist2d } from './util.js';
 import { tileOf, BRIDGE_H as DECK_H } from './tiles.js';
 
@@ -66,9 +66,19 @@ export function buildCurveMesh(pts, bridge, preview, opts = {}) {
   g.add(wall(S, hw + WALK_W, .02, .14, '#b8b2a5'));
   g.add(wall(S, -hw, .02, .2, '#a9a294'));   // curbs, like the straight roads
   g.add(wall(S, hw, .02, .2, '#a9a294'));
-  // the centre line continues the straight road's dashes (1.6 long every 3)
+  // zebra crossings at both ends, where it joins the streets (people cross only there)
+  const len = S[S.length - 1].d;
+  if (!preview && len > 10) for (const at of [2, len - 2]) {
+    const s = S.reduce((b, q) => (Math.abs(q.d - at) < Math.abs(b.d - at) ? q : b), S[0]);
+    for (let o = -hw + .6; o <= hw - .5; o += 1.15) {
+      const z = box(.6, .012, 1.8, '#f2f2f2', s.x + s.nx * o, s.y + .072, s.z + s.nz * o);
+      z.rotation.y = Math.atan2(s.tx, s.tz);
+      g.add(z);
+    }
+  }
+  // the centre line continues the straight road's dashes (1.6 long every 3), up to the zebra crossings
   for (const s of S) {
-    if (Math.round(s.d * 2) % 6 !== 2 || s.d < 1) continue;
+    if (Math.round(s.d * 2) % 6 !== 2 || s.d < 1 || s.d < 3.6 || s.d > len - 3.6) continue;
     const d = box(.18, .01, 1.6, '#f2f2f2', s.x, s.y + .07, s.z);
     d.rotation.y = Math.atan2(s.tx, s.tz);
     g.add(d);
@@ -169,13 +179,16 @@ export class Curves {
     const hw = ROAD_W / 2, x0 = i * TILE - TILE / 2, z0 = j * TILE - TILE / 2;
     for (const c of this.list) {
       if (!c.tiles.has(key)) continue;
+      const len = c.S[c.S.length - 1].d;
       for (const s of c.S) {
+        // sidewalks; the road itself only at the zebra crossings at the ends
+        const zebra = len > 10 && (s.d < 3.2 || s.d > len - 3.2);
         for (let o = -hw - WALK_W; o <= hw + WALK_W; o += .5) {
           const x = s.x + s.nx * o, z = s.z + s.nz * o;
           if (x < x0 || x >= x0 + TILE || z < z0 || z >= z0 + TILE) continue;
           const ci = grid.cell(x), cj = grid.cell(z);
           if (ci < 0 || cj < 0 || ci >= n || cj >= n) continue;
-          C[cj * n + ci] = Math.abs(o) > hw ? 1 : 6;
+          C[cj * n + ci] = Math.abs(o) > hw ? 1 : zebra ? 2 : NO_WALK;
         }
       }
     }
