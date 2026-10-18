@@ -43,7 +43,12 @@ if (params.has('view') || (online && !params.has('edit'))) {
       current = fresh.length;
     } catch { /* offline: try again later */ }
   }, 90000);
-} else if (!(await loadGame(game))) game.newTown();
+} else if (!(await loadGame(game))) {
+  // editing on another computer (no town saved in this browser yet): start from the town on the website
+  let data = null;
+  if (online) { try { data = await (await fetch('town.json', { cache: 'no-store' })).json(); } catch { /* none published yet */ } }
+  if (!loadData(game, data)) game.newTown();
+}
 game.bus.ensureStop(); // older towns get a bus stop too
 game.water.update(0); game.water.ensureBenches(); // older lakes get benches round their beach
 for (const p of [...game.props.list]) if (!p.natural && p.type !== 'busstop' && game.tiles.onAsphalt(p.x, p.z)) game.props.remove(p);

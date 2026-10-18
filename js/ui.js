@@ -77,6 +77,17 @@ export class UI {
     $('btn-export').onclick = () => exportTown(game);
     $('in-site').value = game.siteUrl || '';
     $('in-site').oninput = e => { game.siteUrl = e.target.value.trim(); };
+    // the town that is on the website now (the last town.json uploaded) replaces this one
+    $('btn-fromsite').onclick = async () => {
+      if (!confirm(t('fromSiteConfirm'))) return;
+      game.noSave = true;
+      try {
+        const r = await fetch((game.siteUrl && /^https?:\/\//.test(game.siteUrl) && location.hostname === 'localhost' ? game.siteUrl.replace(/\/?$/, '/') : '') + 'town.json', { cache: 'no-store' });
+        if (!r.ok) throw new Error(t('fromSiteNone'));
+        await importTown(new File([await r.text()], 'town.json', { type: 'application/json' }));
+        location.reload();
+      } catch (err) { game.noSave = false; this.addLog('⚠️ ' + (err.message || t('fromSiteNone'))); }
+    };
     $('in-import').onchange = async e => {
       const f = e.target.files[0];
       if (!f || !confirm(t('importConfirm'))) return;
