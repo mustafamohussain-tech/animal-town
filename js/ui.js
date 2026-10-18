@@ -7,7 +7,6 @@ import { runCommand } from './commands.js';
 import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
-import { SupportWindow } from './support.js';
 import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
@@ -109,9 +108,6 @@ export class UI {
         box.appendChild(b);
       }
     };
-    // 'Support us': a small window with the amounts (the button's own link works without it too)
-    this.support = new SupportWindow(document.getElementById('frame'));
-    $('support-btn').onclick = e => { e.preventDefault(); this.support.open(); };
     $('vb-lang').onclick = () => {
       this.toggleLang();
       try { localStorage.setItem(game.visitorLangKey || 'animal-town-visitor-lang', getLang()); } catch { /* private mode */ }   // remembered for next time
@@ -467,6 +463,8 @@ export class UI {
     this.renderHud();
   }
   applyLang() {
+    // the Wayl store opens in the visitor's language
+    $('support-btn').href = 'https://hartna.thewayl.com/?lang=' + (getLang() === 'ar' ? 'ar' : 'en');
     const lang = getLang();
     document.documentElement.lang = lang;
     $('panel').dir = lang === 'ar' ? 'rtl' : 'ltr';

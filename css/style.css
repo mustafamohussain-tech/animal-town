@@ -327,28 +327,3 @@ input, select { min-height: 38px; }
 body.viewer .support-btn { display: inline-flex; }
 @keyframes sb-beat { 0%, 60%, 100% { transform: scale(1); } 30% { transform: scale(1.22); } }
 @keyframes sb-glow { 50% { box-shadow: 0 4px 22px rgba(255, 93, 143, .75); } }
-
-/* the 'Support us' window (like Buy Me a Coffee) */
-.sup-back { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px;
-  background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: pop .3s ease-out; }
-.sup { position: relative; width: min(380px, 100%); max-height: 92%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
-  background: #fffaf0; color: #2c3a2c; border-radius: 22px; padding: 18px 18px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.4); text-align: center; }
-.sup-x { position: absolute; top: 8px; right: 10px; border: 0; background: none; font-size: 20px; color: #8a8f80; cursor: pointer; padding: 4px 8px; }
-#frame[dir="rtl"] .sup-x { right: auto; left: 10px; }
-.sup-cup { font-size: 40px; line-height: 1; animation: ld-bob 1.6s ease-in-out infinite; }
-.sup-title { margin: 6px 0 4px; font-size: 20px; }
-.sup-lead { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; color: #4f5a48; }
-.sup-why { list-style: none; margin: 0 0 12px; padding: 10px 12px; background: #f3efe2; border-radius: 14px; text-align: start; font-size: 13px; line-height: 1.7; }
-.sup-tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sup-tier { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 14px; border: 2px solid #ece4cf; background: #fff;
-  color: #2c3a2c; cursor: pointer; transition: transform .12s, border-color .12s, box-shadow .12s; }
-.sup-tier .sup-e { font-size: 22px; }
-.sup-tier b { font-size: 19px; }
-.sup-tier small { font-size: 11px; color: #8a8f80; }
-.sup-tier.on { border-color: #ff7a59; box-shadow: 0 4px 14px rgba(255, 122, 89, .3); transform: translateY(-2px); }
-.sup-other { margin-top: 8px; width: 100%; padding: 9px; border-radius: 12px; border: 2px dashed #e1d8bf; background: none; color: #5b6650; font-size: 13.5px; cursor: pointer; }
-.sup-other.on { border-style: solid; border-color: #ff7a59; color: #2c3a2c; }
-.sup-go { display: block; margin-top: 12px; padding: 13px; border-radius: 14px; background: linear-gradient(135deg, #ff5d8f, #ff9a3c); color: #fff;
-  font-weight: 800; font-size: 16px; text-decoration: none; box-shadow: 0 6px 18px rgba(255, 93, 143, .4); }
-.sup-go:active { transform: scale(.98); }
-.sup-note { margin: 10px 0 0; font-size: 11.5px; color: #8a8f80; line-height: 1.5; }
