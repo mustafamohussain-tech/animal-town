@@ -8,6 +8,8 @@ import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
 import { BADGES, BADGE_ORDER, MONTH, badgeOf } from './badges.js';
+import { ACC_SLOTS, ACC_KINDS, ACC_EMOJI, ACC_COLORS, randomAccessories } from './accessories.js';
+import { dress } from './clothes.js';
 import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
@@ -225,6 +227,39 @@ export class UI {
     };
     showBadge();
     box.append(bsel, until);
+
+    // accessories: something on the head, round the neck and on the face, each in a colour
+    box.appendChild(el('small', 'hint', '🎀 ' + t('accL')));
+    const accBox = el('div', 'acc-edit');
+    const drawAcc = () => {
+      accBox.textContent = '';
+      for (const slot of ACC_SLOTS) {
+        const row = el('div', 'acc-row');
+        const sel = el('select');
+        const o0 = el('option', null, t('acc_' + slot) + ': ' + t('accNone')); o0.value = ''; sel.appendChild(o0);
+        for (const k of ACC_KINDS[slot]) { const o = el('option', null, `${ACC_EMOJI[k]} ${t('acc_' + slot)}: ${t('acc_' + k)}`); o.value = k; sel.appendChild(o); }
+        const cur = c.acc[slot];
+        sel.value = cur ? cur[0] : '';
+        const col = el('input'); col.type = 'color'; col.title = t('accColor');
+        col.value = cur ? cur[1] : ACC_COLORS[0];
+        col.disabled = !cur;
+        const put = () => {
+          if (sel.value) c.acc[slot] = [sel.value, col.value]; else delete c.acc[slot];
+          col.disabled = !sel.value;
+          if (c.awake) dress(c, c.job);
+          g.emit('change');
+        };
+        sel.onchange = () => { put(); if (sel.value) { c.say(ACC_EMOJI[sel.value], 2); g.effects.emit('sparkle', { x: c.root.position.x, y: c.root.position.y + 2.6, z: c.root.position.z }, 6); } };
+        col.oninput = put;
+        row.append(sel, col);
+        accBox.appendChild(row);
+      }
+      const rnd = el('button', null, t('accRandom'));
+      rnd.onclick = () => { c.acc = randomAccessories(); if (!Object.keys(c.acc).length) c.acc.head = ['bow', ACC_COLORS[0]]; if (c.awake) dress(c, c.job); g.emit('change'); drawAcc(); };
+      accBox.appendChild(rnd);
+    };
+    drawAcc();
+    box.appendChild(accBox);
 
     // goals (from the follower's comments)
     box.appendChild(el('small', 'hint', '🎯 ' + t('goalsTitle')));

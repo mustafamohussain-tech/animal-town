@@ -255,7 +255,7 @@ export class Recorder {
     const d = new Date(info.startedAt);
     const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
     const who = String(info.name || '').replace(/[^\w؀-ۿ.-]+/g, '').slice(0, 40);
-    const file = `animal-town_${stamp}${info.kind !== 'manual' ? '_' + info.kind : ''}${who ? '_' + who : ''}.${ext}`;
+    const file = `hartna_${stamp}${info.kind !== 'manual' ? '_' + info.kind : ''}${who ? '_' + who : ''}.${ext}`;
     let where = 'download';
     if (await this.folderReady()) {
       try {

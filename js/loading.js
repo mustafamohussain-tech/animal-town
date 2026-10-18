@@ -10,7 +10,7 @@
   if ((saved || first) === 'ar') {
     document.getElementById('loading').dir = 'rtl';
     document.getElementById('ld-text').firstChild.nodeValue = 'جاري التحميل';
-    document.getElementById('ld-title').textContent = 'مدينة الحيوانات';
+    document.getElementById('ld-title').textContent = 'حارتنا';
   }
   // never stuck: gone after 25 s whatever happens
   setTimeout(function () { var l = document.getElementById('loading'); if (l) l.classList.add('done'); }, 25000);

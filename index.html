@@ -6,10 +6,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://esm.sh 'sha256-3qPOd8osY8FUpkcYYGKrbrYJPo0fIrYJnmI1f60FVxg=' 'sha256-RBVV4AB2643FqF3C9avvJi9WGplIZItc2SeFXJMilBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://hartna.awnnak.com https://api.anthropic.com https://esm.sh https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Animal Town</title>
-<meta name="description" content="A little 3D town where every follower is an animal resident. Find your resident!">
+<title>Hartna · حارتنا</title>
+<meta name="description" content="Hartna (حارتنا): a little 3D neighbourhood where every follower is an animal resident. Find your resident!">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐾%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=20261023">
+<link rel="stylesheet" href="css/style.css?v=20261024">
 <style>
   /* the loading screen: shown at once (before anything else), then it fades away when the town is ready */
   #loading { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
@@ -42,14 +42,14 @@
 <body>
 <div id="loading" role="status">
   <div class="ld-ring"><span class="ld-paw">🐾</span><span id="ld-text">Loading<span id="ld-dots"></span></span></div>
-  <div class="ld-title" id="ld-title">Animal Town</div>
+  <div class="ld-title" id="ld-title">Hartna</div>
 </div>
 <script src="js/loading.js"></script>
 <div id="app">
   <main id="stage">
     <div id="frame">
       <div id="hud">
-        <div id="hud-title">🐾 <span data-i18n="title">Animal Town</span></div>
+        <div id="hud-title">🐾 <span data-i18n="title">Hartna</span></div>
         <div class="hud-right"><div id="hud-event" class="hidden"></div><div id="hud-day">📅</div><div id="hud-clock">☀️ 09:00</div><div id="hud-count">🐾 0</div></div>
       </div>
       <div id="banners"></div>
@@ -88,7 +88,7 @@
 
   <aside id="panel">
     <header class="top">
-      <h1>🐾 <span data-i18n="title">Animal Town</span></h1>
+      <h1>🐾 <span data-i18n="title">Hartna</span></h1>
       <div class="top-btns">
         <button id="btn-lang">العربية</button>
         <button id="btn-hide" class="icon" data-i18n-title="hide">🙈</button>

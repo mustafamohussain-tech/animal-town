@@ -179,6 +179,11 @@ select { background: #141926; border: 1px solid var(--line); border-radius: 8px;
 .prof-edit textarea { width: 100%; min-height: 54px; background: #141926; border: 1px solid var(--line); border-radius: 10px; padding: 8px; color: var(--txt); font: inherit; resize: vertical; }
 .prof-edit .row-in { margin-top: 6px; }
 .prof-edit select { flex: none; }
+.acc-edit { display: flex; flex-direction: column; gap: 5px; margin: 2px 0 6px; }
+.acc-row { display: flex; gap: 6px; align-items: center; }
+.acc-row select { flex: 1 !important; min-width: 0; }
+.acc-row input[type=color] { width: 38px; height: 30px; padding: 0 2px; border: 1px solid var(--line); border-radius: 8px; background: #141926; cursor: pointer; }
+.acc-row input[type=color]:disabled { opacity: .3; cursor: default; }
 .prof-edit a { align-self: center; color: var(--blue); font-size: 13px; text-decoration: none; white-space: nowrap; }
 .file-btn { flex: 1; background: #2d3650; border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; cursor: pointer; font-size: 13px; text-align: center; }
 .file-btn input { display: none; }

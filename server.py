@@ -1,4 +1,4 @@
-# Tiny local web server for Animal Town (only reachable from this PC).
+# Tiny local web server for Hartna (only reachable from this PC).
 # Sends "no-cache" so the browser always loads the newest game files.
 import http.server
 import sys
@@ -19,5 +19,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 http.server.ThreadingHTTPServer.allow_reuse_address = True
 with http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Handler) as httpd:
-    print(f'Animal Town is running at http://localhost:{PORT}/  (close this window to stop)')
+    print(f'Hartna is running at http://localhost:{PORT}/  (close this window to stop)')
     httpd.serve_forever()

@@ -6,6 +6,7 @@ import { bodyPart, dress, TORSO_DEPTH } from './clothes.js';
 import { makeTool } from './tools.js';
 import { JOBS } from './jobs.js';
 import { badgeOf } from './badges.js';
+import { randomAccessories } from './accessories.js';
 import { brain } from './behavior.js';
 import { t } from './i18n.js';
 import { mesh, sphere, capsule, cylGeo, lerpAngle, damp, mergeStatic, shadows, pick } from './util.js';
@@ -35,6 +36,8 @@ export class Character {
     // supporter badge (set by the town's owner): heart / star / medal / crown / member (monthly, until a date)
     this.supporter = d.supporter || null;
     this.supporterUntil = d.supporterUntil || null;
+    // accessories: { head: [kind, colour], neck: [...], face: [...] } (a resident from before gets some at random)
+    this.acc = d.acc && typeof d.acc === 'object' ? d.acc : randomAccessories();
     this.workplaceId = null;
     this.hurt = false;
     this.queue = [];
@@ -523,6 +526,6 @@ export class Character {
   }
 
   toJSON() {
-    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, pendingJob: this.pendingJob || null, workplaceId: this.workplaceId, workPinned: !!this.workPinned, joinedAt: this.joinedAt, goals: this.goals, account: this.account, supporter: this.supporter || undefined, supporterUntil: this.supporterUntil || undefined };
+    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, pendingJob: this.pendingJob || null, workplaceId: this.workplaceId, workPinned: !!this.workPinned, joinedAt: this.joinedAt, goals: this.goals, account: this.account, supporter: this.supporter || undefined, supporterUntil: this.supporterUntil || undefined, acc: this.acc };
   }
 }

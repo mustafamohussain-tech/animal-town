@@ -1,4 +1,4 @@
-# 🐾 Animal Town — مدينة الحيوانات
+# 🐾 Hartna — حارتنا
 
 مدينة ثلاثية الأبعاد كل متابع فيها يصير ساكناً على شكل حيوان.
 A 3D town where every follower becomes an animal resident.

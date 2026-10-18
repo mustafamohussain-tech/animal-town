@@ -1,8 +1,8 @@
 @echo off
-title Animal Town
+title Hartna
 cd /d "%~dp0"
 echo.
-echo   Animal Town is starting...
+echo   Hartna is starting...
 echo   Keep this window open while you play. Close it to stop the game.
 echo.
 

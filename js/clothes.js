@@ -1,6 +1,7 @@
 // Smooth body shape + job outfits. Clothes are built on the same body profile so they hug the body.
 import * as THREE from 'three';
 import { mesh, mat, sideMat, sphere, domeGeo, boxGeo, cylGeo, torusGeo, tube, mergeStatic, shadows } from './util.js';
+import { wearAccessories } from './accessories.js';
 
 // Side profile of the torso as [radius, height]; spun around to make one smooth body.
 const TORSO = [[0, .8], [.24, .81], [.3, .88], [.31, .98], [.29, 1.12], [.28, 1.24],
@@ -172,6 +173,7 @@ export function dress(c, job) {
   c.pantsMat.color.set(u.pants || c.pants);
   c.gearHead.userData.eye = c.head.userData.eye;
   GEAR[job]?.(c.gearHead, c.gearBody, c.def, c.def.hatY);
+  wearAccessories(c, job);   // the resident's own bow / hat / tie / mask on top
   mergeStatic(c.gearHead);
   mergeStatic(c.gearBody);
   shadows(c.gearHead);
