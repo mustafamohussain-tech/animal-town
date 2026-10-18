@@ -210,15 +210,23 @@ select { background: #141926; border: 1px solid var(--line); border-radius: 8px;
 
 /* ---------- screen modes, viewer mode, bulk dialog ---------- */
 #hud-day { font-size: 13px; }
-.viewer-bar { display: none; position: absolute; top: 58px; left: 50%; transform: translateX(-50%); width: min(92%, 420px); z-index: 7;
-  background: rgba(252, 250, 242, .96); color: #2c3a2c; border-radius: 16px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
-.viewer-bar .vb-row { display: flex; align-items: center; gap: 8px; }
-.viewer-bar input { background: transparent; border: 0; color: #2c3a2c; padding: 6px 2px; font-size: 15px; }
-.viewer-bar button { background: #eef2e4; border: 0; color: #2c3a2c; border-radius: 10px; padding: 5px 9px; }
-.viewer-bar small { color: #7d8a74; font-size: 11px; display: block; margin-top: 2px; }
+/* visitors' search: a thin see-through bar in the top corner */
+.viewer-bar { display: none; position: absolute; top: 64px; left: 10px; width: min(58%, 260px); z-index: 7;
+  background: rgba(20, 26, 38, .32); color: #fff; border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; padding: 0 4px 0 10px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#frame[dir="rtl"] .viewer-bar { left: auto; right: 10px; padding: 0 10px 0 4px; }
+.viewer-bar .vb-row { display: flex; align-items: center; gap: 4px; height: 30px; }
+.viewer-bar .vb-row > span { font-size: 12px; opacity: .85; }
+.viewer-bar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: #fff; padding: 4px 2px; font-size: 13px; }
+.viewer-bar input::placeholder { color: rgba(255, 255, 255, .85); }
+.viewer-bar button { background: rgba(255, 255, 255, .18); border: 0; color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+.viewer-bar small { display: none; }
 .vb-results { display: flex; flex-direction: column; max-height: 180px; overflow-y: auto; }
-.vb-results button { text-align: start; background: none; padding: 6px 4px; border-radius: 8px; }
-.vb-results button:hover { background: #eef2e4; }
+.vb-results:not(:empty) { margin: 2px -4px 6px -10px; padding: 4px; border-radius: 12px; background: rgba(20, 26, 38, .72); }
+.viewer-bar:has(.vb-results:not(:empty)) { border-radius: 14px; }
+.vb-results button { text-align: start; background: none; color: #fff; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+.vb-results button:hover { background: rgba(255, 255, 255, .15); }
+.vb-results small { display: block; color: #fff; opacity: .8; padding: 4px 8px; }
 body.viewer #panel, body.viewer #show-panel { display: none !important; }
 body.viewer .viewer-bar { display: block; }
 body.viewer .pcard { pointer-events: auto; }
@@ -230,6 +238,20 @@ dialog.dlg .file-btn { display: block; margin: 6px 0; }
 #screen-btns .chip-btn.on { background: var(--acc); color: var(--acc-txt); border-color: var(--acc); }
 .pcard { right: auto; width: min(380px, calc(100% - 20px)); }
 #frame[dir="rtl"] .pcard { left: auto; right: 10px; }
+/* the cards are like a small page: they scroll up and down and leave most of the screen for the town */
+.pcard { max-height: min(44%, 460px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin;
+  padding: 0 14px 12px; }
+.pcard .pc-top { position: sticky; top: 0; z-index: 1; background: rgba(252, 250, 242, .98); margin: 0 -14px; padding: 12px 14px 6px; }
+.pcard .pc-top::before { content: ''; position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #d3d8c6; }
+.pcard .pc-goal p { max-height: none; }
+.pcard::-webkit-scrollbar { width: 4px; }
+.pcard::-webkit-scrollbar-thumb { background: #c9cfbb; border-radius: 2px; }
+/* phones: a little smaller */
+@media (max-width: 520px) {
+  .pcard { font-size: 12.5px; max-height: 42%; }
+  .pc-photo { width: 52px; height: 52px; border-radius: 14px; }
+  .pc-who b { font-size: 16px; }
+}
 
 .cal-grid { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 8px; }
 .cal-row { display: flex; align-items: center; gap: 8px; background: #1a2030; border-radius: 9px; padding: 4px 8px; }

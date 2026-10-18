@@ -141,10 +141,10 @@ export class ProfileCard {
     $('pc-status').textContent = statusText(c);
     const gl = $('pc-goals');
     gl.textContent = '';
-    const goals = [...c.goals.filter(x => !x.done), ...c.goals.filter(x => x.done)].slice(0, 3);
+    // the card scrolls, so everything is listed (up to a sensible number)
+    const goals = [...c.goals.filter(x => !x.done), ...c.goals.filter(x => x.done)].slice(0, 20);
     if (!goals.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('noGoal'); gl.appendChild(li); }
     for (const x of goals) { const li = document.createElement('li'); li.className = x.done ? 'done' : ''; li.textContent = (x.done ? '✅ ' : '🎯 ') + x.text; li.dir = 'auto'; gl.appendChild(li); }
-    if (c.goals.length > 3) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = '+' + (c.goals.length - 3); gl.appendChild(li); }
     const rows = $('pc-rows');
     rows.textContent = '';
     for (const [k, val] of [
@@ -163,8 +163,7 @@ export class ProfileCard {
     $('pc-bel-n').textContent = list.length;
     ul.textContent = '';
     if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('noBelongings'); ul.appendChild(li); }
-    if (list.length > 5) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = '+' + (list.length - 5); ul.appendChild(li); }
-    for (const [e, txt] of list.slice(0, 5)) { const li = document.createElement('li'); li.textContent = `${e} ${txt}`; li.dir = 'auto'; ul.appendChild(li); }
+    for (const [e, txt] of list.slice(0, 50)) { const li = document.createElement('li'); li.textContent = `${e} ${txt}`; li.dir = 'auto'; ul.appendChild(li); }
   }
 }
 
@@ -245,8 +244,8 @@ export class BuildingCard {
     ul.textContent = '';
     const li = (txt, cls) => { const x = document.createElement('li'); x.textContent = txt; x.dir = 'auto'; if (cls) x.className = cls; ul.appendChild(x); };
     if (!staff.length) li(t('noEmployees'), 'empty');
-    for (const c of staff.slice(0, 5)) li(c.pendingJob?.buildingId === b.id ? `⏳ ${c.name}` : `${JOBS[c.job].emoji} ${c.name}`);
-    if (staff.length > 5) li('+' + (staff.length - 5), 'empty');
+    for (const c of staff.slice(0, 60)) li(c.pendingJob?.buildingId === b.id ? `⏳ ${c.name}` : `${JOBS[c.job].emoji} ${c.name}`);
+    if (staff.length > 60) li('+' + (staff.length - 60), 'empty');
   }
 }
 

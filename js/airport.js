@@ -3,6 +3,7 @@
 // The planes live in the scene (not inside the airport model), so they keep flying when the camera is far.
 import * as THREE from 'three';
 import { box, cyl, mesh, mergeStatic, shadows, lerpAngle, clamp, pick } from './util.js';
+import { airportLayout } from './landmarks.js';
 
 const LIVERY = ['#1d5fa8', '#c62828', '#2e7d32', '#6a1b9a', '#ef6c00'];
 
@@ -45,12 +46,14 @@ export function makePlane(color) {
 
 // the circuit, in the airport's own frame (x along the runway, which is at z = zr)
 function legs(b) {
-  const W = b.W, D = b.D, zr = -D / 2 + 6, zt = -2;
+  const W = b.W, { zr, zt, gz, gates } = airportLayout(b.W, b.D);
   return {
-    W, zr, zt,
-    out: gx => [
-      { x: gx, z: zt, v: 5 }, { x: -W / 2 + 9, z: zt, v: 7 }, { x: -W / 2 + 6, z: zr + 1.5, v: 4 },
-      { x: -W / 2 + 7, z: zr, v: 3, hold: true },                       // waits here until the runway is free
+    W, zr, zt, gz, gates,
+    // pushed back out of the gate onto the taxiway, then to the far end and down the link to the runway
+    out: () => [
+      { x: -W / 2 + 6, z: zt, v: 7 },
+      { x: -W / 2 + 6, z: zr + 3, v: 4, hold: true },   // waits at the end of the taxiway (well clear) until the runway is free
+      { x: -W / 2 + 8, z: zr, v: 3, lineup: true },     // then lines up and goes
     ],
     air: [
       { x: W / 2 + 140, z: zr, y: 40, v: 42 }, { x: W / 2 + 230, z: zr + 160, y: 62, v: 44 },
@@ -59,8 +62,8 @@ function legs(b) {
       { x: -W / 2 + 12, z: zr, y: 0, v: 27, touch: true },
     ],
     back: gx => [
-      { x: W / 2 - 26, z: zr, v: 7 }, { x: W / 2 - 8, z: zr, v: 5 }, { x: W / 2 - 6, z: zt, v: 5 },
-      { x: gx + 5, z: zt, v: 7 }, { x: gx, z: zt + 1.5, v: 3 }, { x: gx, z: 4, v: 2, gate: true },
+      { x: W / 2 - 26, z: zr, v: 7 }, { x: W / 2 - 6, z: zr, v: 5 }, { x: W / 2 - 6, z: zr + 3, v: 4 }, { x: W / 2 - 6, z: zt, v: 5 },
+      { x: gx + 6, z: zt, v: 7 }, { x: gx, z: zt + 3, v: 3 }, { x: gx, z: gz, v: 2, gate: true },   // nose in at the gate
     ],
   };
 }
@@ -84,10 +87,10 @@ export class Flights {
   }
   start(b) {
     const L = legs(b);
-    return [-18, -4].map((gx, k) => {
+    return L.gates.map((gx, k) => {
       const obj = makePlane(LIVERY[(b.id + k) % LIVERY.length]);
       this.game.scene.add(obj);
-      const p = { b, L, gx, obj, x: gx, z: 4, y: 0, h: Math.PI, v: 0, pitch: 0, roll: 0, mode: 'gate', wait: 8 + k * 30, route: [], i: 0 };
+      const p = { b, L, gx, obj, x: gx, z: L.gz, y: 0, h: 0, v: 0, pitch: 0, roll: 0, mode: 'gate', wait: 8 + k * 30, route: [], i: 0 };
       if (k === 1) { const a = L.air[2]; Object.assign(p, { mode: 'air', x: a.x - 120, z: a.z, y: a.y, h: Math.PI / 2, v: 44, route: L.air, i: 2 }); }
       this.place(p);
       return p;
@@ -99,10 +102,13 @@ export class Flights {
   fly(p, dt, planes) {
     const L = p.L;
     if (p.mode === 'gate') {
-      // at the gate: turn round slowly to face the taxiway, then go
-      p.h = lerpAngle(p.h, Math.PI, 1 - Math.exp(-dt * .6));
       p.wait -= dt;
-      if (p.wait <= 0) { p.mode = 'taxi'; p.route = L.out(p.gx); p.i = 0; }
+      if (p.wait <= 0) p.mode = 'push';
+    } else if (p.mode === 'push') {
+      // pushed back slowly onto the taxiway (only when nothing is coming along it)
+      const busy = planes.some(o => o !== p && (o.mode === 'taxi' || (o.mode === 'push' && planes.indexOf(o) < planes.indexOf(p)) || (o.mode === 'land' && o.i >= 3)));   // (two at once: the first goes first)
+      if (!busy) p.z -= 2.2 * dt;
+      if (p.z <= L.zt) { p.z = L.zt; p.mode = 'taxi'; p.route = L.out(); p.i = 0; p.v = 0; }
     } else if (p.mode === 'roll') {
       // the take-off run: faster and faster along the runway, then up
       p.h = lerpAngle(p.h, Math.PI / 2, 1 - Math.exp(-dt * 3));
@@ -123,7 +129,13 @@ export class Flights {
     const w = p.route[p.i];
     if (!w) return;
     const air = p.mode === 'air';
-    if (w.hold && planes.some(o => o !== p && (o.mode === 'roll' || (o.mode === 'air' && o.i >= 5) || (o.mode === 'land' && o.i <= 1)))) { p.v = Math.max(0, p.v - dt * 4); return; }
+    if (w.hold && planes.some(o => o !== p && (o.mode === 'roll' || (o.mode === 'air' && o.i >= 5) || (o.mode === 'land' && o.i <= 2)))) { p.v = Math.max(0, p.v - dt * 4); return; }
+    // on the ground: keep well behind any plane ahead (a plane is 16 long and 14 across)
+    if (!air) for (const o of planes) {
+      if (o === p || o.mode === 'air' || o.mode === 'gate') continue;
+      const ox = o.x - p.x, oz = o.z - p.z, ahead = ox * Math.sin(p.h) + oz * Math.cos(p.h), side = Math.abs(ox * Math.cos(p.h) - oz * Math.sin(p.h));
+      if (ahead > 0 && ahead < 24 && side < 15) { p.v = Math.max(0, p.v - 8 * dt); return; }
+    }
     const dx = w.x - p.x, dz = w.z - p.z, d = Math.hypot(dx, dz);
     const want = Math.atan2(dx, dz), turn = air ? .32 : 1.1;
     let diff = Math.atan2(Math.sin(want - p.h), Math.cos(want - p.h));
@@ -146,7 +158,7 @@ export class Flights {
     if (d < (air ? (w.touch ? 6 : 30) : 1.2) || passed || (air && p.legT > 45)) {
       if (w.touch && !(passed || d < 6)) { p.i = 0; return; }   // not lined up with the runway: go around
       p.i++;
-      if (w.hold) { p.mode = 'roll'; p.v = 2; return; }
+      if (w.lineup) { p.mode = 'roll'; p.v = 2; return; }
       if (w.touch) { p.mode = 'land'; p.y = 0; p.route = L.back(p.gx); p.i = 0; return; }
       if (w.gate) { p.mode = 'gate'; p.v = 0; p.wait = 25 + Math.random() * 25; return; }
       if (air && p.i >= p.route.length) p.i = 0;

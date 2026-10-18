@@ -77,7 +77,7 @@ export const TYPES = {
   // landmarks (landmarks.js): hand-made models
   mosque: { emoji: '🕌', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 20, job: 'imam', canBurn: false, signBg: '#1f6f5c', styles: { ottoman: {} } },
   university: { emoji: '🎓', open: true, tiles: [3, 2], floors: [1, 1, 1], time: 24, job: 'professor', signBg: '#24467a', styles: { classic: {} } },
-  airport: { emoji: '✈️', open: true, tiles: [8, 3], floors: [1, 1, 1], time: 30, job: 'pilot', canBurn: false, signBg: '#1d5fa8', styles: { intl: {} } },
+  airport: { emoji: '✈️', open: true, tiles: [10, 5], floors: [1, 1, 1], time: 30, job: 'pilot', canBurn: false, signBg: '#1d5fa8', styles: { intl: {} } },
   amusement: { emoji: '🎡', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 18, job: 'operator', canBurn: false, signBg: '#c2185b', styles: { fair: {} } },
   custom: { emoji: '🏗️', role: 'office', tiles: [1, 1], floors: [1, 20, 3], time: 12, styles: { custom: {} } },
 };

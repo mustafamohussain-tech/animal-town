@@ -72,6 +72,16 @@ function fountain(b, p, x, z, r, jetY) {
   b.blocks.push([x - r - .2, z - r - .2, x + r + .2, z + r + .2]);
 }
 
+// the airport's plan (the planes in airport.js use it too): runway, taxiway, where the planes park, the terminal
+export function airportLayout(W, D) {
+  const zr = -D / 2 + 6;          // runway centre line
+  const zt = zr + 16;             // taxiway: a plane's wings (7 each side) never meet one on the runway
+  const gz = zt + 16.5;           // parked planes' centre: their tails stay clear of the taxiway
+  const tb = gz + 10.5;           // the terminal's back wall: the noses stop short of it
+  const tw = Math.min(60, W - 40), tx = -W / 2 + 12 + tw / 2;
+  return { zr, zt, gz, tb, tx, tw, gates: [tx - tw / 4, tx + tw / 4] };
+}
+
 export const LANDMARKS = {
   // ---------- the mosque (2 x 2 tiles): prayer hall + big dome, a portico, two pencil minarets, a courtyard with the ablution fountain ----------
   mosque(b) {
@@ -257,49 +267,64 @@ export const LANDMARKS = {
     b.spots.door = [[0, D / 2 + 1.4, Math.PI, 'stand', 0, 0]];
   },
 
-  // ---------- the airport (8 x 3 tiles): runway, taxiway, apron, terminal, control tower (planes: airport.js) ----------
+  // ---------- the airport (10 x 5 tiles): runway, taxiway, apron with two gates, terminal, control tower ----------
+  // Distances are kept wide (planes are 16 long, 14 across): a plane on the taxiway never touches one on the
+  // runway or at a gate, and parked planes stay clear of the terminal and of each other. Planes: airport.js
   airport(b) {
     const { W, D } = b, base = b.base();
+    const A = airportLayout(W, D), { zr, zt, gz, tb, tx, tw, gates } = A;
     box(W, .06, D, '#8fbf6a', 0, .03, 0, base);
-    const zr = -D / 2 + 6, zt = -2;                     // runway and taxiway lines
+    // runway with markings, and the two links to the taxiway at its ends
     box(W - 2, .1, 8.4, '#3d4148', 0, .08, zr, base);
     for (let x = -W / 2 + 14; x < W / 2 - 14; x += 6) box(3, .02, .25, '#ffffff', x, .14, zr, base);
     for (const s of [-1, 1]) {
       for (let k = -3; k <= 3; k++) if (k) box(3.6, .02, .5, '#ffffff', s * (W / 2 - 4), .14, zr + k * .95, base);
-      box(.25, .02, 8, '#ffffff', s * (W / 2 - 7), .14, zr, base);
-      box(4, .1, 3, '#3d4148', s * (W / 2 - 6), .07, (zr + zt) / 2, base);   // the link to the taxiway
+      box(.25, .02, 8, '#ffffff', s * (W / 2 - 8), .14, zr, base);
+      box(4.4, .1, zt - zr, '#4a4f57', s * (W / 2 - 6), .07, (zr + zt) / 2, base);
+      box(.16, .02, zt - zr, '#f2c230', s * (W / 2 - 6), .13, (zr + zt) / 2, base);
     }
     box(W - 2, .02, .2, '#ffffff', 0, .14, zr - 3.9, base);
     box(W - 2, .02, .2, '#ffffff', 0, .14, zr + 3.9, base);
-    box(W - 8, .1, 4, '#4a4f57', 0, .08, zt, base);
+    // taxiway, apron and the gate lines
+    box(W - 8, .1, 4.4, '#4a4f57', 0, .08, zt, base);
     box(W - 8, .02, .16, '#f2c230', 0, .14, zt, base);
-    box(W - 22, .1, 10, '#b9b4aa', -5, .07, 4.5, base);   // the apron
-    for (const x of [-18, -4]) { box(.16, .02, 9, '#f2c230', x, .13, 4.5, base); }
+    box(tw + 4, .1, tb - zt - 2, '#b9b4aa', tx, .07, (zt + 2 + tb) / 2, base);
+    for (const gx of gates) {
+      box(.16, .02, tb - zt - 2.5, '#f2c230', gx, .13, (zt + 2 + tb) / 2, base);
+      box(3, .02, .16, "#f2c230", gx, .13, gz + 4.6, base);   // the stop line for the nose wheel
+    }
     // runway edge lights
     const el = b.piece(0, 0);
     for (let x = -W / 2 + 2; x <= W / 2 - 2; x += 5) for (const z of [zr - 4.3, zr + 4.3]) { const m = mesh(new THREE.SphereGeometry(.16, 6, 4), NIGHT.bulb, x, .2, z, el); m.userData.keep = true; }
 
-    // the terminal: a long glass hall with a wavy roof, two jet bridges
-    const tz = D / 2 - 5.2, tw = 50, tx = -5, ter = b.piece(tx, tz);
-    box(tw, 6, 6.6, '#e8edf2', 0, 3, 0, ter);
+    // the terminal: a long glass hall with a wavy roof; a covered bridge reaches each parked plane's door
+    const tz = tb + 3.5, ter = b.piece(tx, tz);
+    box(tw, 6, 7, '#e8edf2', 0, 3, 0, ter);
     for (let x = -tw / 2 + 1.5; x < tw / 2 - 1; x += 2.5) {
-      mesh(boxGeo(2.2, 4.2, .12), NIGHT.winLit2, x, 2.6, 3.32, ter);
-      mesh(boxGeo(2.2, 4.2, .12), NIGHT.winLit, x, 2.6, -3.32, ter);
+      mesh(boxGeo(2.2, 4.2, .12), NIGHT.winLit2, x, 2.6, 3.52, ter);
+      mesh(boxGeo(2.2, 4.2, .12), NIGHT.winLit, x, 2.6, -3.52, ter);
     }
-    for (let k = 0; k < 10; k++) { const r = box(tw / 10 + .1, .4, 8.4, '#f4f6f8', -tw / 2 + tw / 20 + k * tw / 10, 6.4 + Math.sin(k * .7) * .35, 0, ter); r.rotation.z = Math.cos(k * .7) * .06; }
-    box(5, 3.6, .2, '#2c4a5e', 0, 1.8, 3.4, ter);
-    box(9, 1.1, .2, '#ffffff', 0, 5.2, 3.45, ter);
-    b.sign(ter, 0, 5.2, 3.56, 8.6, .95);
-    for (const x of [-18, -4]) {
-      const jb = b.piece(x, tz - 3.3);
-      box(2.2, 2.6, 6.2, '#d0d5db', 0, 4.2, -3.1, jb);
-      cyl(.25, .3, 3, '#7a8088', 0, 1.5, -5.4, jb, 8);
-      box(1.6, .6, .8, '#3a3f48', 0, .3, -5.4, jb);
+    for (let k = 0; k < 12; k++) { const r = box(tw / 12 + .1, .4, 8.8, '#f4f6f8', -tw / 2 + tw / 24 + k * tw / 12, 6.4 + Math.sin(k * .7) * .35, 0, ter); r.rotation.z = Math.cos(k * .7) * .06; }
+    box(5, 3.6, .2, '#2c4a5e', 0, 1.8, 3.6, ter);
+    box(9, 1.1, .2, '#ffffff', 0, 5.2, 3.65, ter);
+    b.sign(ter, 0, 5.2, 3.76, 8.6, .95);
+    for (const gx of gates) {
+      // from the terminal wall to the door near the nose, high above the wing
+      const jb = b.piece(gx + 2.1, (tb + gz + 4.5) / 2), len = tb - (gz + 4.5);
+      box(2.2, 2.6, len, '#d0d5db', 0, 4.4, 0, jb);
+      for (let k = 0; k < 3; k++) box(2.3, .1, .1, '#9aa0a8', 0, 5.75, -len / 2 + (k + .5) * len / 3, jb);
+      cyl(.25, .3, 3.1, '#7a8088', 0, 1.55, len / 2 - 1, jb, 8);
     }
-    b.blocks.push([tx - tw / 2, tz - 3.4, tx + tw / 2, tz + 3.4]);
+    b.blocks.push([tx - tw / 2, tb, tx + tw / 2, tb + 7]);
+    // service trucks between the gates (well outside the wings)
+    const ex = b.piece(0, 0);
+    for (const [x, c] of [[(gates[0] + gates[1]) / 2, '#f2c230'], [gates[1] + 13, '#e8edf2']]) {
+      box(1.6, 1.6, 3, c, x, 1.1, gz + 3, ex); box(1.6, 1.4, 1.2, '#2c4a5e', x, 1, gz + 5, ex);
+      for (const s of [-1, 1]) for (const dz of [2, 4.4]) cyl(.35, .35, .3, '#222222', x + s * .8, .35, gz + dz, ex, 10).rotation.z = Math.PI / 2;
+    }
 
-    // the control tower with a turning radar
-    const tow = b.piece(W / 2 - 9, D / 2 - 6);
+    // the control tower (front right, far from the planes) with a turning radar
+    const twx = W / 2 - 10, twz = tb + 3.5, tow = b.piece(twx, twz);
     box(4.4, 4, 4.4, '#e8edf2', 0, 2, 0, tow);
     cyl(1.3, 1.6, 16, '#e8edf2', 0, 12, 0, tow, 12);
     cyl(2.9, 2.2, 1, '#e8edf2', 0, 20.3, 0, tow, 8);
@@ -316,25 +341,24 @@ export const LANDMARKS = {
     mergeStatic(radar);
     tow.add(radar);
     b.tickers.push((dt, tm) => { radar.rotation.y += dt * 1.6; beacon.visible = tm % 1.4 < .7; });
-    b.blocks.push([W / 2 - 11.5, D / 2 - 8.5, W / 2 - 6.5, D / 2 - 3.5]);
+    b.blocks.push([twx - 2.5, twz - 2.5, twx + 2.5, twz + 2.5]);
 
-    // windsock, service trucks, a fence along the airside
-    const ex = b.piece(0, 0);
-    cyl(.07, .07, 4, '#c0c6cf', -W / 2 + 10, 2, zr + 6.5, ex, 6);
-    const sock = mesh(coneGeo(.45, 2.2, 10), '#ff7a1a', -W / 2 + 11.1, 3.8, zr + 6.5, ex);
-    sock.rotation.z = Math.PI / 2;
-    for (const [x, c] of [[-12, '#f2c230'], [1, '#e8edf2']]) { box(3, 1.6, 1.6, c, x, 1.1, 7.6, ex); box(1.2, 1.4, 1.6, '#2c4a5e', x + 1.9, 1, 7.6, ex); for (const s of [-1, 1]) for (const dx of [-1, 1.4]) cyl(.35, .35, .3, '#222222', x + dx, .35, 7.6 + s * .8, ex, 10).rotation.x = Math.PI / 2; }
-    for (let x = -W / 2 + 1; x < W / 2 - 1; x += 2) cyl(.04, .04, 1.4, '#9aa0a8', x, .7, 9.9, ex, 4);
-    box(W - 2, .06, .06, '#9aa0a8', 0, 1.35, 9.9, ex);
-    // airside is closed to people walking (planes move there)
-    b.blocks.push([-W / 2, -D / 2, W / 2, 9.9]);
-    for (const x of [-22, -8, 6]) lamp(b, ex, x, D / 2 - .8, 3.6);
+    // a windsock and a fence between the airside and the street side
+    const wx = W / 2 - 4, wz = D / 2 - 2;
+    cyl(.07, .07, 4, '#c0c6cf', wx, 2, wz, ex, 6);
+    const sock = mesh(coneGeo(.45, 2.2, 10), '#ff7a1a', wx - 1.1, 3.8, wz, ex);
+    sock.rotation.z = -Math.PI / 2;
+    for (const [a, z] of [[-W / 2 + 1, tx - tw / 2], [tx + tw / 2, twx - 3]]) {
+      for (let x = a; x < z; x += 2) cyl(.04, .04, 1.4, '#9aa0a8', x, .7, tb, ex, 4);
+      box(z - a, .06, .06, '#9aa0a8', (a + z) / 2, 1.35, tb, ex);
+    }
+    // the airside is closed to people walking (planes move there)
+    b.blocks.push([-W / 2, -D / 2, W / 2, tb]);
+    for (const x of [tx - 22, tx - 8, tx + 8, tx + 22]) lamp(b, ex, x, D / 2 - .8, 3.6);
 
     b.spots.door = [[tx, D / 2 + 1.2, Math.PI, 'stand', 0, 0]];
     b.spots.work = [[tx - 4, D / 2 + .9, 0, 'stand', 0, 0], [tx + 4, D / 2 + .9, 0, 'stand', 0, 0], [tx + 8, D / 2 + .9, 0, 'stand', 0, 0]];
     b.points.inside = [tx, 0, tz];
-    b.gates = [-18, -4];
-    b.runway = { zr, zt, len: W };
   },
 
   // ---------- the amusement park (2 x 2 tiles): Ferris wheel, carousel, swing ride, stands ----------
