@@ -1,6 +1,6 @@
 // Small things placed on the map: street lamps, traffic lights, trees, benches, flower beds.
 import * as THREE from 'three';
-import { box, cyl, ball, mesh, sphere, rand, pick, mergeStatic, shadows, dist2d } from './util.js';
+import { box, cyl, ball, mesh, sphere, coneGeo, cylGeo, rand, pick, mergeStatic, flatten, shadows, dist2d } from './util.js';
 import { NIGHT, addGlow } from './daynight.js';
 import { TILE } from './path.js';
 import { LEAVES } from './world.js';
@@ -16,6 +16,98 @@ export const PROP_TYPES = {
   gardenlamp: { emoji: '🏮', block: .3 },
 };
 const LIGHT_COLORS = ['#2ecc40', '#ffcf3f', '#ff3b30'];
+
+// ---------- flowers: a natural patch growing in the grass (no planter box) ----------
+// Each patch has its own random numbers (from its id), so it always grows back the same.
+const GREEN = '#3f8f3a', LEAF = '#4caf50';
+const FLOWERS = {
+  // a tulip: a closed cup on a straight stem, two long leaves
+  tulip(g, x, z, h, r, col) {
+    cyl(.022, .028, h, GREEN, x, h / 2, z, g, 5);
+    const cup = mesh(sphere(.11, 10, 8), col, x, h + .06, z, g);
+    cup.scale.set(1, 1.35, 1);
+    for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2; const t = mesh(coneGeo(.055, .12, 5), col, x + Math.sin(a) * .06, h + .2, z + Math.cos(a) * .06, g); }
+    for (const s of [-1, 1]) { const l = mesh(sphere(.06, 6, 5), LEAF, x + s * .07, h * .35, z, g); l.scale.set(.5, 3.2, 1.1); l.rotation.z = s * .35; }
+  },
+  // a daisy: white (or pink) petals round a yellow middle, facing up
+  daisy(g, x, z, h, r, col) {
+    cyl(.016, .02, h, GREEN, x, h / 2, z, g, 5);
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI * 2, pt = mesh(sphere(.05, 6, 4), col, x + Math.sin(a) * .09, h + .02, z + Math.cos(a) * .09, g);
+      pt.scale.set(.75, .22, 1.9);
+      pt.rotation.y = a;
+    }
+    mesh(sphere(.055, 8, 6), '#ffc300', x, h + .04, z, g).scale.y = .6;
+    const l = mesh(sphere(.05, 6, 5), LEAF, x + .05, h * .3, z, g);
+    l.scale.set(.6, 2.2, 1.2);
+  },
+  // a rose: layered round petals in a bud, a thorny stem with leaves
+  rose(g, x, z, h, r, col) {
+    cyl(.02, .026, h, '#2f6b2a', x, h / 2, z, g, 5);
+    mesh(sphere(.11, 10, 8), col, x, h + .05, z, g).scale.set(1, .85, 1);
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2 + r, pt = mesh(sphere(.07, 8, 6), col, x + Math.sin(a) * .08, h + .03, z + Math.cos(a) * .08, g);
+      pt.scale.set(1, .7, .5);
+      pt.rotation.y = a;
+    }
+    mesh(sphere(.05, 8, 6), col, x, h + .13, z, g);
+    for (const s of [-1, 1]) { const l = mesh(sphere(.05, 6, 5), '#2f7d32', x + s * .08, h * (s > 0 ? .45 : .62), z, g); l.scale.set(1.6, .4, 1); }
+  },
+  // a sunflower: tall, a big yellow head with a brown middle, turned a little to the side
+  sunflower(g, x, z, h, r, col) {
+    h *= 1.9;
+    cyl(.03, .04, h, GREEN, x, h / 2, z, g, 6);
+    const head = new THREE.Group();
+    head.position.set(x, h + .05, z);
+    head.rotation.set(-1.1, r, 0);
+    g.add(head);
+    cyl(.13, .13, .05, '#5d3a1a', 0, 0, 0, head, 12);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, pt = mesh(sphere(.06, 6, 4), '#ffc300', Math.sin(a) * .2, 0, Math.cos(a) * .2, head); pt.scale.set(.7, .25, 1.8); pt.rotation.y = a; }
+    for (const s of [-1, 1]) { const l = mesh(sphere(.09, 6, 5), LEAF, x + s * .12, h * .45, z, g); l.scale.set(1.8, .35, 1.2); l.rotation.z = s * .3; }
+  },
+  // lavender: a little bush of purple spikes
+  lavender(g, x, z, h, r, col) {
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2 + r, ox = Math.sin(a) * .07, oz = Math.cos(a) * .07, hh = h * (.8 + (k % 3) * .12);
+      const st = cyl(.012, .014, hh, '#6a8f5a', x + ox, hh / 2, z + oz, g, 4);
+      st.rotation.set(oz * 2, 0, -ox * 2);
+      const sp = mesh(sphere(.045, 6, 5), col, x + ox * 1.8, hh + .08, z + oz * 1.8, g);
+      sp.scale.set(1, 3.2, 1);
+    }
+  },
+};
+const COLORS = {
+  tulip: ['#ff3b5c', '#ffb703', '#ff85a1', '#c77dff', '#ffffff', '#e63946', '#fb8500'],
+  daisy: ['#ffffff', '#ffffff', '#ffd6e8', '#fff3b0'],
+  rose: ['#c1121f', '#e63946', '#ff8fab', '#ffffff', '#ffb4a2'],
+  sunflower: ['#ffc300'],
+  lavender: ['#9d4edd', '#7b2cbf', '#b185db'],
+};
+function flowerPatch(root, seed) {
+  const g = new THREE.Group();
+  g.scale.setScalar(1.3);   // a little bigger than life, so they show from the street
+  root.add(g);
+  // its own random numbers
+  let st = (Math.imul(seed + 7, 2654435761) >>> 0) || 1;
+  const rnd = () => { st ^= st << 13; st >>>= 0; st ^= st >>> 17; st ^= st << 5; st >>>= 0; return st / 4294967296; };
+  const kinds = Object.keys(FLOWERS), pk = a => a[Math.floor(rnd() * a.length)];
+  // most patches are one kind in several colours, some are a mix
+  const mixed = rnd() < .35, main = pk(kinds), n = 11 + Math.floor(rnd() * 8);
+  // tufts of grass blades underneath (no box)
+  for (let k = 0; k < 10; k++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 1.05, cx = Math.cos(a) * d, cz = Math.sin(a) * d * .7;
+    for (let m = 0; m < 5; m++) {
+      const h = .12 + rnd() * .14, bl = mesh(coneGeo(.025, h, 3), m % 2 ? '#4f9a45' : '#5cae4c', cx + (rnd() - .5) * .14, h / 2, cz + (rnd() - .5) * .14, g);
+      bl.rotation.set((rnd() - .5) * .6, rnd() * 3, (rnd() - .5) * .6);
+    }
+  }
+  for (let k = 0; k < n; k++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 1.05;
+    const kind = mixed ? pk(kinds) : main;
+    const h = .35 + rnd() * .3, x = Math.cos(a) * d, z = Math.sin(a) * d * .7;
+    FLOWERS[kind](g, x, z, h, rnd() * 6.28, pk(COLORS[kind]));
+  }
+}
 
 export class Props {
   constructor(game) {
@@ -82,8 +174,9 @@ export class Props {
     } else if (type === 'busstop') {
       makeBusStop(this.game, g);
     } else if (type === 'flowers') {
-      box(2.2, .3, 1.2, '#8b5a2b', 0, .15, 0, g);
-      for (let k = 0; k < 10; k++) ball(.16, pick(['#ff7aa2', '#ffd23f', '#ffffff', '#b48cff', '#ff5d5d']), rand(-.9, .9), .38, rand(-.4, .4), g);
+      flowerPatch(g, p.id);
+      g.updateMatrixWorld(true);
+      flatten(g);   // (the sunflower heads too) -> few draw calls
     }
     mergeStatic(g);
     shadows(g);
