@@ -37,6 +37,10 @@ export function toSpot(b, s, o = {}) {
     },
     update(c) {
       if (c.moving) return false;
+      // people only get into a building through its door: if the walk didn't reach the spot (or the stairs),
+      // they are not moved there (that would look like walking through a wall); they give up instead
+      const p = c.root.position, goal = phase === 1 ? b.stairWorld() : s;
+      if (goal && Math.hypot(p.x - goal.x, p.z - goal.z) > 1.8) { c.say?.('🤷', 1.5); return 'abort'; }
       if (phase === 1) {
         c.game.effects.emit('dust', { x: c.root.position.x, y: .5, z: c.root.position.z }, 3);
         c.root.position.set(s.x, s.y, s.z);
@@ -89,9 +93,11 @@ export function routine(list, name) {
           sub = list[i++];
           sub.start?.(c);
         }
-        if (!sub.update(c, dt, t)) return false;
+        const r = sub.update(c, dt, t);
+        if (!r) return false;
         sub.end?.(c);
         sub = null;
+        if (r === 'abort') { i = list.length; return 'abort'; }   // couldn't get there: drop the rest of the plan
       }
       return false;
     },
@@ -427,9 +433,9 @@ export function parkActs(c) {
     const fx = Math.sin(b.rot), fz = Math.cos(b.rot), front = { x: b.x + fx * 1.2, z: b.z + fz * 1.2 };
     return [goTo(front.x, front.z), {
       name: 'bench',
-      start(x) { b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(8, 16); if (Math.random() < .3) x.say(pick(['😌', '🌳', '☀️', '🐦'])); },
-      update(x, dt) { this.left -= dt; return this.left <= 0; },
-      end(x) { b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
+      start(x) { if (Math.hypot(x.root.position.x - front.x, x.root.position.z - front.z) > 2) { this.skip = true; return; } b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(8, 16); if (Math.random() < .3) x.say(pick(['😌', '🌳', '☀️', '🐦'])); },
+      update(x, dt) { if (this.skip) return 'abort'; this.left -= dt; return this.left <= 0; },
+      end(x) { if (this.skip) return; b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
     }];
   }
   const s = g.paths.walkSpot(pos) || null;
@@ -450,9 +456,9 @@ export function lakeActs(c) {
     const fx = Math.sin(b.rot), fz = Math.cos(b.rot), front = { x: b.x + fx * 1.2, z: b.z + fz * 1.2 };
     return [goTo(front.x, front.z), {
       name: 'bench',
-      start(x) { b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(10, 20); if (Math.random() < .35) x.say(pick(['😌', '🌊', '🦆', '☀️'])); },
-      update(x, dt) { this.left -= dt; return this.left <= 0; },
-      end(x) { b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
+      start(x) { if (Math.hypot(x.root.position.x - front.x, x.root.position.z - front.z) > 2) { this.skip = true; return; } b.user = x.id; x.root.position.set(b.x + fx * .15, 0, b.z + fz * .15); x.faceAngle = b.rot; x.root.rotation.y = b.rot; x.pose = 'sit'; this.left = rand(10, 20); if (Math.random() < .35) x.say(pick(['😌', '🌊', '🦆', '☀️'])); },
+      update(x, dt) { if (this.skip) return 'abort'; this.left -= dt; return this.left <= 0; },
+      end(x) { if (this.skip) return; b.user = null; x.pose = 'idle'; x.root.position.set(front.x, 0, front.z); },
     }];
   }
   // a stroll round the lake: two or three spots along the beach

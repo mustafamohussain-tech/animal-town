@@ -341,9 +341,11 @@ export class Character {
       else { this.commanded = false; this.activity = brain(this); }
       this.activity.start?.(this);
     }
-    if (this.activity.update(this, dt, t)) {
+    const r = this.activity.update(this, dt, t);
+    if (r) {
       this.activity.end?.(this);
       this.activity = null;
+      if (r === 'abort') this.queue = [];   // couldn't get there: the rest of the order is dropped too
     }
 
     // walk along the path

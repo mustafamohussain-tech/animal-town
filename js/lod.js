@@ -53,7 +53,11 @@ export class Chunks {
     const w = this.game.world, d = w.camera.position.distanceTo(w.controls.target);
     // closer: the full models reach further; very high up everything is simple (too small to see the details)
     const up = (r0, k, r1) => d <= 220 ? clamp(r0 + d * k, r0, r1) : Math.max(0, r1 - (d - 220) * .55);
-    return { tile: up(105, .35, 180), prop: up(100, .3, 170), bld: up(85, .25, 135) };
+    const R = { tile: up(105, .35, 180), prop: up(100, .3, 170), bld: up(85, .25, 135) };
+    // a town that isn't huge: every building and street keeps its full model (simple blocks only for big towns)
+    if (this.game.town.all.length <= 400) R.bld = 1e6;
+    if (this.game.tiles.items.size <= 2500) R.tile = 1e6;
+    return R;
   }
   scan() {
     const t = this.game.world.controls.target, R = this.radii(), changed = new Set();

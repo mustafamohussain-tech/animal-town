@@ -576,7 +576,8 @@ export class Game {
       this.awakeT = .4;
       const f = this.world.controls.target, d = this.director, list = [];
       // seen from very high up the residents are dots: fewer of them get a body
-      const R = this.world.camera.position.distanceTo(f) > 350 ? 35 : AWAKE_R;
+      // (a town with up to AWAKE_MAX residents keeps everyone awake, wherever the camera is)
+      const R = this.chars.length <= AWAKE_MAX ? Infinity : this.world.camera.position.distanceTo(f) > 350 ? 35 : AWAKE_R;
       for (const c of this.chars) {
         const p = c.root.position, dd = Math.hypot(p.x - f.x, p.z - f.z);
         // always: the chosen / followed resident, and anyone riding a car or the bus
