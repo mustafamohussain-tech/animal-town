@@ -2,7 +2,7 @@
 // round the neck (a tie, a bow tie, a scarf) and on the face (a mask, sunglasses, a moustache), each in
 // its own colour. A new resident picks some at random; the town's owner can change them on the profile.
 import * as THREE from 'three';
-import { mesh, sphere, domeGeo, boxGeo, cylGeo, coneGeo, torusGeo, pick } from './util.js';
+import { mesh, sphere, domeGeo, boxGeo, cylGeo, coneGeo, torusGeo } from './util.js';
 import { torsoRadius } from './clothes.js';
 
 export const ACC_COLORS = ['#e91e63', '#ff80ab', '#f44336', '#ff9800', '#ffd23f', '#8bc34a', '#4caf50',
@@ -137,12 +137,18 @@ const BUSY = {
   face: ['teacher', 'professor'],
 };
 
-// a random set for a new resident: most wear something, some wear two or three things
-export function randomAccessories() {
+// a random set for a new resident: most wear something, some wear two or three things.
+// With a seed (the resident's name) the same name always gets the same set, so a town on the website
+// saved before accessories existed looks the same to every visitor.
+export function randomAccessories(seed) {
+  let h = 2166136261;
+  for (const ch of String(seed ?? Math.random())) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const one = l => l[Math.floor(rnd() * l.length)];
   const a = {};
-  if (Math.random() < .5) a.head = [pick(ACC_KINDS.head), pick(ACC_COLORS)];
-  if (Math.random() < .35) a.neck = [pick(ACC_KINDS.neck), pick(ACC_COLORS)];
-  if (Math.random() < .14) a.face = [pick(ACC_KINDS.face), pick(ACC_COLORS)];
+  if (rnd() < .5) a.head = [one(ACC_KINDS.head), one(ACC_COLORS)];
+  if (rnd() < .35) a.neck = [one(ACC_KINDS.neck), one(ACC_COLORS)];
+  if (rnd() < .14) a.face = [one(ACC_KINDS.face), one(ACC_COLORS)];
   return a;
 }
 

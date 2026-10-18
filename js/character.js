@@ -37,7 +37,7 @@ export class Character {
     this.supporter = d.supporter || null;
     this.supporterUntil = d.supporterUntil || null;
     // accessories: { head: [kind, colour], neck: [...], face: [...] } (a resident from before gets some at random)
-    this.acc = d.acc && typeof d.acc === 'object' ? d.acc : randomAccessories();
+    this.acc = d.acc && typeof d.acc === 'object' ? d.acc : randomAccessories(d.name);
     this.workplaceId = null;
     this.hurt = false;
     this.queue = [];
