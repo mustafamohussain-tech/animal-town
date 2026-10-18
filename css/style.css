@@ -316,3 +316,14 @@ input, select { min-height: 38px; }
 .undo-bar button { flex: none; }
 .undo-what { flex: 1; min-width: 0; text-align: center; font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #frame.building-mode .pcard { display: none; }
+
+/* visitors: a 'Support us' button in the top corner opposite the search */
+.support-btn { display: none; position: absolute; top: 64px; right: 10px; z-index: 7; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px;
+  border-radius: 999px; background: linear-gradient(135deg, #ff5d8f, #ff9a3c); color: #fff; font-size: 13px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 4px 14px rgba(255, 93, 143, .45); animation: sb-glow 2.6s ease-in-out infinite; }
+#frame[dir="rtl"] .support-btn { right: auto; left: 10px; padding: 0 10px 0 14px; }
+.support-btn:hover { filter: brightness(1.08); }
+.support-btn .sb-heart { display: inline-block; animation: sb-beat 1.3s ease-in-out infinite; }
+body.viewer .support-btn { display: inline-flex; }
+@keyframes sb-beat { 0%, 60%, 100% { transform: scale(1); } 30% { transform: scale(1.22); } }
+@keyframes sb-glow { 50% { box-shadow: 0 4px 22px rgba(255, 93, 143, .75); } }

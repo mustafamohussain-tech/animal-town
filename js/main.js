@@ -66,6 +66,7 @@ if (game.savedMusic?.on) {
 ui.refreshAll();
 // big town: build what is near the camera now, the rest comes as the camera moves
 game.chunks.flush();
+game.landMap.draw(); game.landMap.dirty = false;   // the ground's colours before the loading screen goes (never a black ground)
 console.info(`town ready: ${game.chars.length} residents, ${game.town.all.length} buildings, ${Math.round(performance.now())} ms after opening`);
 
 // screen shape: phone (9:16, for TikTok), computer (16:9) or fill the whole window
