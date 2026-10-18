@@ -38,6 +38,17 @@ export class CameraDirector {
     // the player takes over: any automatic camera flight (e.g. up to the view from above when building) stops
     const el = game.world.renderer.domElement;
     el.addEventListener('pointerdown', () => { this.goal = null; });
+    // dragging the map while following someone: the camera stays where you moved it (no tug back)
+    const ptrs = new Map();
+    el.addEventListener('pointerdown', e => { ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button }); });
+    el.addEventListener('pointermove', e => {
+      const p = ptrs.get(e.pointerId);
+      if (!p || ptrs.size !== 1 || p.b !== 0 || this.mode !== 'follow') return;
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) this.setMode('free');
+    });
+    const up = e => ptrs.delete(e.pointerId);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
     el.addEventListener('wheel', () => { this.goal = null; }, { passive: true });
     addEventListener('keydown', e => {
       if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || e.ctrlKey || e.metaKey) return;
@@ -270,18 +281,16 @@ export class CameraDirector {
     if (this.mode !== 'interior') this.keepOutside();
     this.look.copy(ctl.target);
   }
-  // the camera never goes under the ground or into a building (the inside view is its own mode)
+  // the camera never goes under the ground or into a building (the inside view is its own mode):
+  // over a building it glides up above the roof (no jumping sideways through walls)
   keepOutside() {
     const p = this.cam.position;
     if (p.y < 1.4) p.y = 1.4;
     for (const b of this.game.town.near(p.x, p.z, 16)) {
       if (b.def.open || b.W == null) continue;
-      const l = b.toLocal(p.x, p.z), mx = b.W / 2 + .9, mz = b.D / 2 + .9;
-      if (Math.abs(l.x) >= mx || Math.abs(l.z) >= mz || p.y > (b.roofTop ?? 3) + 1.2) continue;
-      // out through the nearest wall
-      const nx = mx - Math.abs(l.x) < mz - Math.abs(l.z);
-      const w = b.toWorld(nx ? Math.sign(l.x || 1) * mx : l.x, nx ? l.z : Math.sign(l.z || 1) * mz);
-      p.x = w.x; p.z = w.z;
+      const l = b.toLocal(p.x, p.z), mx = b.W / 2 + .9, mz = b.D / 2 + .9, top = (b.complete ? b.roofTop : Math.min(b.roofTop, 30)) + 1.2;
+      if (Math.abs(l.x) >= mx || Math.abs(l.z) >= mz || p.y > top) continue;
+      p.y = top;
     }
   }
 }

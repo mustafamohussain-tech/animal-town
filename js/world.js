@@ -37,13 +37,15 @@ export class World {
     const c = this.controls = new OrbitControls(cam, r.domElement);
     c.target.set(0, 1, 0);
     c.enableDamping = true;
-    c.dampingFactor = .12;
+    c.dampingFactor = .08;   // a soft glide after letting go
     c.rotateSpeed = .7;
     c.zoomSpeed = 1.3;
     c.panSpeed = 1;
     c.zoomToCursor = true;
     // mouse: left drag = move over the map, right drag = turn the camera, wheel = zoom
     c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    // phones: one finger moves over the map, two fingers pinch to zoom and twist to turn (like a map app)
+    c.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
     c.maxPolarAngle = Math.PI * .48;
     c.minDistance = 2.5;
     c.maxDistance = 420;   // far out the town turns into a miniature (see render)
