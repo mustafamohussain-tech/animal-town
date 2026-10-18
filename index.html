@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- security: the page may only run its own code and the libraries named here (no injected scripts) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://esm.sh 'sha256-3qPOd8osY8FUpkcYYGKrbrYJPo0fIrYJnmI1f60FVxg=' 'sha256-RBVV4AB2643FqF3C9avvJi9WGplIZItc2SeFXJMilBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://hartna.awnnak.com https://api.anthropic.com https://esm.sh https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Animal Town</title>
 <meta name="description" content="A little 3D town where every follower is an animal resident. Find your resident!">
@@ -41,24 +44,7 @@
   <div class="ld-ring"><span class="ld-paw">🐾</span><span id="ld-text">Loading<span id="ld-dots"></span></span></div>
   <div class="ld-title" id="ld-title">Animal Town</div>
 </div>
-<script>
-  // the words in the phone's / computer's language (Arabic or English), or the language the visitor picked before
-  (function () {
-    window.__ldStart = Date.now();
-    var saved = null;
-    try { saved = localStorage.getItem('animal-town-visitor-lang'); } catch (e) { /* private mode */ }
-    var prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
-    var first = 'en';
-    for (var k = 0; k < prefs.length; k++) if (/^(ar|en)/i.test(prefs[k])) { first = prefs[k].slice(0, 2).toLowerCase(); break; }
-    if ((saved || first) === 'ar') {
-      document.getElementById('loading').dir = 'rtl';
-      document.getElementById('ld-text').firstChild.nodeValue = 'جاري التحميل';
-      document.getElementById('ld-title').textContent = 'مدينة الحيوانات';
-    }
-    // never stuck: gone after 25 s whatever happens
-    setTimeout(function () { var l = document.getElementById('loading'); if (l) l.classList.add('done'); }, 25000);
-  })();
-</script>
+<script src="js/loading.js"></script>
 <div id="app">
   <main id="stage">
     <div id="frame">
