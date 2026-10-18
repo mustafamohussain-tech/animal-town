@@ -97,7 +97,10 @@ export class UI {
         box.appendChild(b);
       }
     };
-    $('vb-lang').onclick = () => this.toggleLang();
+    $('vb-lang').onclick = () => {
+      this.toggleLang();
+      try { localStorage.setItem(game.visitorLangKey || 'animal-town-visitor-lang', getLang()); } catch { /* private mode */ }   // remembered for next time
+    };
     $('ev-try-btn').onclick = () => { game.events.tryNow($('ev-try').value, 10); };
     $('ev-stop').onclick = () => { game.events.tryNow(null); };
     $('b-floors').oninput = e => { this.bFloors = +e.target.value; $('b-floors-n').textContent = this.bFloors; };

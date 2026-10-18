@@ -4,6 +4,7 @@ import { UI } from './ui.js';
 import { loadGame, saveGame, loadData, lastSaveSize } from './save.js';
 import { Music } from './music.js';
 import { Recorder } from './recorder.js';
+import { setLang } from './i18n.js';
 
 const stage = document.getElementById('stage');
 const frame = document.getElementById('frame');
@@ -21,7 +22,17 @@ if (params.has('view') || (online && !params.has('edit'))) {
   document.body.classList.add('viewer');
   let data = null, text = '';
   try { text = await (await fetch('town.json', { cache: 'no-store' })).text(); data = JSON.parse(text); } catch { /* no published town yet */ }
-  if (!loadData(game, data)) game.newTown();
+  // visitors see the town in their phone's language (Arabic or English), or the one they picked last time
+  const LANG_KEY = 'animal-town-visitor-lang';
+  let lang = null;
+  try { lang = localStorage.getItem(LANG_KEY); } catch { /* private mode */ }
+  if (lang !== 'ar' && lang !== 'en') {
+    const prefs = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
+    lang = (prefs.find(l => /^(ar|en)/i.test(l)) || 'en').slice(0, 2).toLowerCase();
+  }
+  setLang(lang);
+  if (!loadData(game, data, { keepLang: true })) game.newTown();
+  game.visitorLangKey = LANG_KEY;
   game.screenMode = 'fill';
   // when you upload a newer town.json, visitors get it automatically (checked every 90 seconds)
   let current = data ? text.length : 0;
