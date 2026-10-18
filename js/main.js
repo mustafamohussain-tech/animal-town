@@ -100,6 +100,12 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+// the town is drawn: the loading screen fades away (shown at least a moment, so it doesn't just flash)
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  setTimeout(() => { el.classList.add('done'); setTimeout(() => el.remove(), 800); }, Math.max(0, 900 - (Date.now() - (window.__ldStart || 0))));
+}));
 
 // saving: every 4 seconds, a big town (slower to write) every 30 seconds, and when the page is hidden or closed
 let lastSave = performance.now();

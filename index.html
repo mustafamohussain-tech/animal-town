@@ -6,7 +6,29 @@
 <title>Animal Town</title>
 <meta name="description" content="A little 3D town where every follower is an animal resident. Find your resident!">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐾%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=20261018">
+<link rel="stylesheet" href="css/style.css?v=20261019">
+<style>
+  /* the loading screen: shown at once (before anything else), then it fades away when the town is ready */
+  #loading { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    background: radial-gradient(circle at 50% 42%, #1e2638, #0d1017 70%); transition: opacity .7s ease, visibility .7s; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; }
+  #loading.done { opacity: 0; visibility: hidden; }
+  .ld-ring { position: relative; width: 156px; height: 156px; display: flex; align-items: center; justify-content: center; }
+  .ld-ring::before { content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(255,207,63,0) 0deg, #ffcf3f 120deg, #ff7aa2 210deg, #4fc3f7 290deg, #66bb6a 350deg, rgba(102,187,106,0) 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+    animation: ld-spin 1.3s linear infinite; }
+  .ld-ring::after { content: ''; position: absolute; inset: 16px; border-radius: 50%; background: rgba(255,255,255,.06); box-shadow: inset 0 0 24px rgba(255,255,255,.05);
+    animation: ld-breathe 2.4s ease-in-out infinite; }
+  #ld-text { position: relative; z-index: 1; color: #fff; font-weight: 600; font-size: 16px; text-align: center; line-height: 1.3; }
+  #ld-dots::after { content: ''; animation: ld-dots 1.4s steps(4) infinite; }
+  .ld-paw { position: absolute; top: 34px; font-size: 22px; z-index: 1; animation: ld-bob 1.4s ease-in-out infinite; }
+  .ld-title { color: rgba(255,255,255,.72); font-weight: 600; font-size: 15px; letter-spacing: .4px; }
+  @keyframes ld-spin { to { transform: rotate(360deg); } }
+  @keyframes ld-breathe { 50% { transform: scale(.94); background: rgba(255,255,255,.09); } }
+  @keyframes ld-bob { 50% { transform: translateY(-4px); } }
+  @keyframes ld-dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+</style>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -15,6 +37,28 @@
 </script>
 </head>
 <body>
+<div id="loading" role="status">
+  <div class="ld-ring"><span class="ld-paw">🐾</span><span id="ld-text">Loading<span id="ld-dots"></span></span></div>
+  <div class="ld-title" id="ld-title">Animal Town</div>
+</div>
+<script>
+  // the words in the phone's / computer's language (Arabic or English), or the language the visitor picked before
+  (function () {
+    window.__ldStart = Date.now();
+    var saved = null;
+    try { saved = localStorage.getItem('animal-town-visitor-lang'); } catch (e) { /* private mode */ }
+    var prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    var first = 'en';
+    for (var k = 0; k < prefs.length; k++) if (/^(ar|en)/i.test(prefs[k])) { first = prefs[k].slice(0, 2).toLowerCase(); break; }
+    if ((saved || first) === 'ar') {
+      document.getElementById('loading').dir = 'rtl';
+      document.getElementById('ld-text').firstChild.nodeValue = 'جاري التحميل';
+      document.getElementById('ld-title').textContent = 'مدينة الحيوانات';
+    }
+    // never stuck: gone after 25 s whatever happens
+    setTimeout(function () { var l = document.getElementById('loading'); if (l) l.classList.add('done'); }, 25000);
+  })();
+</script>
 <div id="app">
   <main id="stage">
     <div id="frame">
