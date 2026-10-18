@@ -7,6 +7,7 @@ import { runCommand } from './commands.js';
 import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
+import { BADGES, BADGE_ORDER, MONTH, badgeOf } from './badges.js';
 import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
@@ -200,6 +201,30 @@ export class UI {
     const g = this.game;
     card.appendChild(el('h3', null, '👤 ' + t('profile')));
     const box = el('div', 'prof-edit');
+
+    // supporter badge (you set it when someone supported Hartna in the Wayl store)
+    box.appendChild(el('small', 'hint', '🎖️ ' + t('badgeL')));
+    const bsel = el('select');
+    const opt = (v, txt) => { const o = el('option', null, txt); o.value = v; bsel.appendChild(o); };
+    opt('', t('badgeNone'));
+    for (const k of BADGE_ORDER) opt(k, `${BADGES[k].emoji} ${t('badge_' + k)}${BADGES[k].usd ? ' · $' + BADGES[k].usd : ' · ' + t('badgeMonthly')}`);
+    const until = el('small', 'hint');
+    const showBadge = () => {
+      const bd = badgeOf(c);
+      bsel.value = bd ? bd.key : '';
+      until.textContent = bd?.key === 'member' && c.supporterUntil ? t('badgeUntil', { d: new Date(c.supporterUntil).toLocaleDateString(getLang() === 'ar' ? 'ar' : 'en-GB') }) : '';
+    };
+    bsel.onchange = () => {
+      c.supporter = bsel.value || null;
+      c.supporterUntil = c.supporter === 'member' ? Date.now() + MONTH : null;   // a month from today (choose it again to renew)
+      c.updateLabel();
+      if (c.supporter) { c.say(BADGES[c.supporter].emoji, 3); g.effects.emit('sparkle', { x: c.root.position.x, y: c.root.position.y + 2.6, z: c.root.position.z }, 10); }
+      showBadge();
+      this.card.update();
+      g.emit('change');
+    };
+    showBadge();
+    box.append(bsel, until);
 
     // goals (from the follower's comments)
     box.appendChild(el('small', 'hint', '🎯 ' + t('goalsTitle')));

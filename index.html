@@ -9,7 +9,7 @@
 <title>Animal Town</title>
 <meta name="description" content="A little 3D town where every follower is an animal resident. Find your resident!">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐾%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=20261022">
+<link rel="stylesheet" href="css/style.css?v=20261023">
 <style>
   /* the loading screen: shown at once (before anything else), then it fades away when the town is ready */
   #loading { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
@@ -64,7 +64,7 @@
         <div class="pc-top"><span data-i18n="meetNeighbor"></span><button id="pc-close" aria-label="close">✕</button></div>
         <div class="pc-head">
           <div class="pc-photo"><img id="pc-portrait" alt=""><span id="pc-emoji"></span></div>
-          <div class="pc-who"><b id="pc-name" dir="auto"></b><a id="pc-handle" target="_blank" rel="noopener"></a></div>
+          <div class="pc-who"><b id="pc-name" dir="auto"></b><a id="pc-handle" target="_blank" rel="noopener"></a><span id="pc-badge" class="pc-badge"></span></div>
         </div>
         <div class="pc-status"><i></i><span id="pc-status"></span></div>
         <div class="pc-goal"><small data-i18n="goals"></small><ul id="pc-goals" class="pc-goals"></ul></div>

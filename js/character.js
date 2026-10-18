@@ -5,6 +5,7 @@ import { ANIMALS } from './animals.js';
 import { bodyPart, dress, TORSO_DEPTH } from './clothes.js';
 import { makeTool } from './tools.js';
 import { JOBS } from './jobs.js';
+import { badgeOf } from './badges.js';
 import { brain } from './behavior.js';
 import { t } from './i18n.js';
 import { mesh, sphere, capsule, cylGeo, lerpAngle, damp, mergeStatic, shadows, pick } from './util.js';
@@ -31,6 +32,9 @@ export class Character {
     // goals written from this follower's comments: [{ text, done, at }]
     this.goals = Array.isArray(d.goals) ? d.goals : (d.goal ? [{ text: d.goal, done: false, at: this.joinedAt }] : []);
     this.account = d.account || { platform: 'tiktok', handle: String(d.name || '').replace(/^@+/, '') };
+    // supporter badge (set by the town's owner): heart / star / medal / crown / member (monthly, until a date)
+    this.supporter = d.supporter || null;
+    this.supporterUntil = d.supporterUntil || null;
     this.workplaceId = null;
     this.hurt = false;
     this.queue = [];
@@ -244,7 +248,9 @@ export class Character {
   }
   updateLabel() {
     if (!this.awake) return;
-    this.labelName.textContent = this.name;
+    const bd = badgeOf(this);
+    this.labelName.textContent = (bd ? bd.emoji + ' ' : '') + this.name;
+    this.labelInner.parentNode.className = 'clabel' + (bd ? ' sup-' + bd.key : '');
     this.labelJob.textContent = this.job === 'none' ? '' : `${JOBS[this.job].emoji} ${t('job_' + this.job)}`;
     this.labelJob.style.display = this.job === 'none' ? 'none' : '';
   }
@@ -517,6 +523,6 @@ export class Character {
   }
 
   toJSON() {
-    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, pendingJob: this.pendingJob || null, workplaceId: this.workplaceId, workPinned: !!this.workPinned, joinedAt: this.joinedAt, goals: this.goals, account: this.account };
+    return { id: this.id, name: this.name, animal: this.animal, shirt: this.shirt, pants: this.pants, job: this.job, homeId: this.homeId, hurt: this.hurt, pendingJob: this.pendingJob || null, workplaceId: this.workplaceId, workPinned: !!this.workPinned, joinedAt: this.joinedAt, goals: this.goals, account: this.account, supporter: this.supporter || undefined, supporterUntil: this.supporterUntil || undefined };
   }
 }

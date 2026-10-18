@@ -2,6 +2,7 @@
 // and a little portrait photo. Shown as a card on screen (in the recording) and edited in the panel.
 import * as THREE from 'three';
 import { t, getLang } from './i18n.js';
+import { badgeOf } from './badges.js';
 import { JOBS } from './jobs.js';
 
 export const PLATFORMS = {
@@ -133,6 +134,11 @@ export class ProfileCard {
     const $ = id => document.getElementById(id);
     $('pc-emoji').textContent = c.def.emoji;
     $('pc-name').textContent = c.name;
+    // a supporter badge under the name
+    const bd = badgeOf(c), pb = $('pc-badge');
+    pb.textContent = bd ? `${bd.emoji} ${t('badge_' + bd.key)}` : '';
+    pb.className = 'pc-badge' + (bd ? ' sup-' + bd.key : '');
+    pb.style.display = bd ? '' : 'none';
     const url = accountUrl(c.account), h = cleanHandle(c.account?.handle);
     const a = $('pc-handle');
     a.textContent = h ? `${(PLATFORMS[c.account.platform] || PLATFORMS.tiktok).label} · @${h} ↗` : '';

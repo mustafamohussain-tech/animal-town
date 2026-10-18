@@ -327,3 +327,13 @@ input, select { min-height: 38px; }
 body.viewer .support-btn { display: inline-flex; }
 @keyframes sb-beat { 0%, 60%, 100% { transform: scale(1); } 30% { transform: scale(1.22); } }
 @keyframes sb-glow { 50% { box-shadow: 0 4px 22px rgba(255, 93, 143, .75); } }
+
+/* supporter badges: a coloured frame round the name tag, and a pill on the profile card */
+.clabel.sup-heart .inner { box-shadow: 0 0 0 2px #ffd23f; }
+.clabel.sup-star .inner { box-shadow: 0 0 0 2px #ffb703, 0 0 10px rgba(255, 183, 3, .6); }
+.clabel.sup-medal .inner { box-shadow: 0 0 0 2px #f4a261, 0 0 12px rgba(244, 162, 97, .7); }
+.clabel.sup-crown .inner { background: linear-gradient(135deg, rgba(120, 84, 0, .85), rgba(40, 30, 0, .85)); box-shadow: 0 0 0 2px #ffcf3f, 0 0 16px rgba(255, 207, 63, .8); }
+.clabel.sup-member .inner { box-shadow: 0 0 0 2px #7dd3fc, 0 0 12px rgba(125, 211, 252, .7); }
+.pc-badge { align-self: flex-start; margin-top: 3px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #fff3c4; color: #7a5a00; }
+.pc-badge.sup-crown { background: linear-gradient(135deg, #ffe08a, #ffc23d); color: #5a3d00; }
+.pc-badge.sup-member { background: #dff4ff; color: #0b5d7a; }
