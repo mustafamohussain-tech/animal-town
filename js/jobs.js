@@ -10,5 +10,9 @@ export const JOBS = {
   teacher: { emoji: '📚', place: 'school' },
   fisher: { emoji: '🎣', place: 'dock' },
   doctor: { emoji: '🩺', place: 'hospital' },
+  imam: { emoji: '🕌', place: 'mosque' },
+  professor: { emoji: '🎓', place: 'university' },
+  pilot: { emoji: '🧑‍✈️', place: 'airport' },
+  operator: { emoji: '🎡', place: 'amusement' },
 };
-export const JOB_ORDER = ['builder', 'shopkeeper', 'farmer', 'chef', 'police', 'firefighter', 'teacher', 'fisher', 'doctor'];
+export const JOB_ORDER = ['builder', 'shopkeeper', 'farmer', 'chef', 'police', 'firefighter', 'teacher', 'fisher', 'doctor', 'imam', 'professor', 'pilot', 'operator'];

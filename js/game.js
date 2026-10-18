@@ -16,6 +16,7 @@ import { Paths } from './paths.js';
 import { Parks } from './parks.js';
 import { Traffic } from './traffic.js';
 import { Chunks, LandMap, BuildingProxies, TreeProxies } from './lod.js';
+import { Flights } from './airport.js';
 import { Town, TYPES, makeSpec, autoPlace } from './buildings.js';
 import { FH } from './buildgen.js';
 import { Character } from './character.js';
@@ -29,7 +30,7 @@ import { pick, dist2d, clamp } from './util.js';
 const normName = n => String(n || '').trim().replace(/^@+/, '').toLowerCase();
 // only this many residents (the nearest to the camera) have a 3D body and act at the same time
 const AWAKE_R = 65, AWAKE_MAX = 120, TAGS_MAX = 45, TAGS_R = 90, SHADOW_R = 45;
-const SEATED = new Set(['sit', 'eat', 'lie', 'sleep', 'sleepGround', 'sitGround', 'stir', 'sell', 'point', 'fish', 'heal', 'hoe', 'hammer']);
+const SEATED = new Set(['pray', 'sit', 'eat', 'lie', 'sleep', 'sleepGround', 'sitGround', 'stir', 'sell', 'point', 'fish', 'heal', 'hoe', 'hammer']);
 
 export class Game {
   constructor(frame) {
@@ -55,6 +56,7 @@ export class Game {
     this.paths = new Paths(this);
     this.parks = new Parks(this);
     this.traffic = new Traffic(this);
+    this.flights = new Flights(this);   // planes of the airports
     this.history = new History(this);
     this.vehicles = new Vehicles(this);
     this.events = new Events(this);
@@ -547,6 +549,7 @@ export class Game {
     this.events.update(dt);
     this.water.update(dt);
     this.traffic.update(dt);
+    this.flights.update(dt);
     this.bus.update(dt);
     this.effects.update(dt);
     this.world.update(dt);

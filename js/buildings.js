@@ -4,6 +4,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { box, cyl, ball, mesh, sphere, coneGeo, cylGeo, signTexture, SIGN_AR, shadows, mergeStatic, flatten, rand, pick, clamp, easeOutBack, dist2d } from './util.js';
 import { TILE } from './path.js';
 import { tileOf } from './tiles.js';
+import { LANDMARKS, LANDMARK_PROXY } from './landmarks.js';
 import { buildShell, FH } from './buildgen.js';
 import { F } from './interiors.js';
 import { NIGHT, addGlow } from './daynight.js';
@@ -20,6 +21,9 @@ export const TYPES = {
       cottage: { roof: 'gable', window: 'square', chimney: true, walls: ['#f6d6a8', '#f7c6d9', '#d7f0c2', '#fff1b8', '#cfe8f7'], roofs: ['#c0392b', '#8e44ad', '#d35400', '#7f4f24', '#2f6f9f'] },
       modern: { roof: 'flat', window: 'wide', walls: ['#eceff1', '#d5dbe1', '#fafafa'], roofs: ['#4a4f5a'], trim: '#8a6a4a', band: '#8a6a4a' },
       villa: { roof: 'hip', window: 'tall', balcony: true, columns: true, walls: ['#f3e5c8', '#efd9b4', '#e8d3c0'], roofs: ['#b5523b', '#a0522d'] },
+      // an old Damascus house (like in Bab al-Hara): striped stone below, plaster and a wooden
+      // mashrabiya bay above, an arched door, and an inner courtyard with a fountain and a lemon tree
+      damascene: { roof: 'flat', window: 'arch', ablaq: true, mashrabiya: true, courtyard: true, pergola: true, walls: ['#e9dcc3', '#e3d2b2', '#efe3cc'], stone: '#efe8da', roofs: ['#b9ab92'], trim: '#6b4226', parapet: '#d8c9ab', band: '#6b4226' },
     },
   },
   apartment: {
@@ -70,9 +74,15 @@ export const TYPES = {
   dock: { emoji: '🎣', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 14, job: 'fisher', canBurn: false, signBg: '#1f6f9f', styles: { pond: {} } },
   garage: { emoji: '🅿️', open: true, tiles: [1, 1], floors: [1, 1, 1], time: 8, canBurn: false, signBg: '#2f6f9f', styles: { lot: {} } },
   park: { emoji: '🌳', open: true, tiles: [1, 1], floors: [1, 1, 1], time: 10, canBurn: false, signBg: '#2e7d32', styles: { small: {}, big: { tiles: [2, 2] } } },
+  // landmarks (landmarks.js): hand-made models
+  mosque: { emoji: '🕌', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 20, job: 'imam', canBurn: false, signBg: '#1f6f5c', styles: { ottoman: {} } },
+  university: { emoji: '🎓', open: true, tiles: [3, 2], floors: [1, 1, 1], time: 24, job: 'professor', signBg: '#24467a', styles: { classic: {} } },
+  airport: { emoji: '✈️', open: true, tiles: [8, 3], floors: [1, 1, 1], time: 30, job: 'pilot', canBurn: false, signBg: '#1d5fa8', styles: { intl: {} } },
+  amusement: { emoji: '🎡', open: true, tiles: [2, 2], floors: [1, 1, 1], time: 18, job: 'operator', canBurn: false, signBg: '#c2185b', styles: { fair: {} } },
   custom: { emoji: '🏗️', role: 'office', tiles: [1, 1], floors: [1, 20, 3], time: 12, styles: { custom: {} } },
 };
-export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'garage'];   // parks are drawn with the park tool
+for (const [k, p] of Object.entries(LANDMARK_PROXY)) TYPES[k].proxy = p;
+export const BUILD_MENU = ['house', 'apartment', 'shop', 'restaurant', 'hospital', 'school', 'police', 'firestation', 'farm', 'dock', 'garage', 'mosque', 'university', 'amusement', 'airport'];   // parks are drawn with the park tool
 
 // turn a type + choices into a full design ("spec") with colours picked
 export function makeSpec(type, o = {}) {
@@ -90,6 +100,8 @@ export function makeSpec(type, o = {}) {
     awning: st.awning === true ? vcol : (st.awning || null),
     band: st.band || null, cross: !!st.cross, bell: !!st.bell, clock: !!st.clock, sirens: !!st.sirens,
     garage: !!st.garage, tower: !!st.tower,
+    ablaq: !!st.ablaq, mashrabiya: !!st.mashrabiya, courtyard: !!st.courtyard, pergola: !!st.pergola,
+    stone: st.stone || null, parapet: st.parapet || null,
     wall: o.wall || (st.variantWalls && vcol) || pick(st.walls || ['#e8e2d6']),
     roofColor: o.roofColor || pick(st.roofs || ['#4a4f5a']),
     trim: o.trim || st.trim || '#ffffff',
@@ -291,6 +303,8 @@ function seeded(seed, fn) {
   try { return fn(); } finally { Math.random = R; }
 }
 
+Object.assign(OPEN, LANDMARKS);
+
 // ---------- placement on the tile grid ----------
 export function footprint(spec, i, j, rot) {
   const [tw, td] = spec.tiles;
@@ -361,7 +375,7 @@ export class Building {
     this.fishing = 0;
     this.pieces = []; this.blocks = []; this.wallRects = []; this.spots = {}; this.points = {};
     this.signs = []; this.lightSpots = []; this.floorGroups = []; this.roofGroups = [];
-    this.seatRes = {}; this.anims = []; this.sources = [];
+    this.seatRes = {}; this.anims = []; this.sources = []; this.tickers = [];
     this.cutState = '';
     this.marks = [];          // rectangles this building blocks in the walking grid
     this.layout = false;      // spots, walls, beds... are known once the full model has been built
@@ -385,7 +399,8 @@ export class Building {
     for (const [a, c] of this.tiles) game.tiles.claim(a, c, this.id);
     if (!game.loading) game.props.clearRect(tcx - fp.rw * TILE / 2, tcz - fp.rd * TILE / 2, tcx + fp.rw * TILE / 2, tcz + fp.rd * TILE / 2);
     // known without the 3D model: where the cars park, how tall it is
-    if (this.yard) this.parkSpots = [[-this.W / 2 - this.yard / 2, -1.2], [-this.W / 2 - this.yard / 2, 3.6]];
+    // (a Damascene house has a courtyard there instead: its car parks in a car park)
+    if (this.yard && !this.spec.courtyard) this.parkSpots = [[-this.W / 2 - this.yard / 2, -1.2], [-this.W / 2 - this.yard / 2, 3.6]];
     if (this.type === 'garage') this.parkSpots = garageBays(this.D);
     this.roofTop = this.def.open ? 3 : this.wallTop() + (['gable', 'hip'].includes(this.spec.roof) ? Math.min(this.W, this.D) * .3 : .8);
 
@@ -427,7 +442,7 @@ export class Building {
     this.dropModel();
     const grow = this.crops ? this.crops.map(c => c.grow) : this.cropGrow;
     this.pieces = []; this.blocks = []; this.wallRects = []; this.spots = {}; this.points = {};
-    this.signs = []; this.lightSpots = []; this.floorGroups = []; this.roofGroups = []; this.anims = [];
+    this.signs = []; this.lightSpots = []; this.floorGroups = []; this.roofGroups = []; this.anims = []; this.tickers = [];
     this.crops = null;
     this.group = new THREE.Group();
     this.group.position.set(this.cx, 0, this.cz);
@@ -437,7 +452,7 @@ export class Building {
     seeded(this.id, () => {
       if (this.def.open) OPEN[this.type](this);
       else buildShell(this, { ...this.spec, signBg: this.def.signBg }, this.W, this.D);
-      if (this.yard) this.buildCarport();
+      if (this.yard) { if (this.spec.courtyard) this.buildCourtyard(); else this.buildCarport(); }
     });
     if (this.crops && grow) grow.forEach((g, k) => { const c = this.crops[k]; if (c) { c.grow = g; c.g.scale.setScalar(1.7 * (.25 + .75 * g)); } });
     this.group.updateMatrixWorld(true);
@@ -466,7 +481,7 @@ export class Building {
     this.group.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
     for (const m of this.signs) { m.material.map?.dispose(); m.material.dispose(); }
     this.group = this.model = this.lod = this.scaffold = this.water = this.bobber = this.lights = null;
-    this.pieces = []; this.signs = []; this.floorGroups = []; this.roofGroups = []; this.anims = [];
+    this.pieces = []; this.signs = []; this.floorGroups = []; this.roofGroups = []; this.anims = []; this.tickers = [];
     this.lodOn = false; this.cutState = ''; this.isCut = false; this.viewFloorMax = null; this.needLod = false;
   }
   // spots, beds and walls are needed (someone goes inside): build the model once to learn them
@@ -507,6 +522,43 @@ export class Building {
     box(this.yard + .1, .14, 6.2, '#6e737c', 0, 2.66, -1, pc);
     box(this.yard + .3, .1, .2, '#f4f1ea', 0, 2.56, 2.1, pc);
     this.parkSpots = [[x, -1.2], [x, 3.6]];   // under the roof, then on the driveway
+  }
+
+  // the inner courtyard of a Damascene house (in the side strip): striped walls, a patterned stone floor,
+  // a fountain (bahra), a lemon tree, jasmine and pots, and a wooden gate to the lane
+  buildCourtyard() {
+    const x = -this.W / 2 - this.yard / 2, half = TILE / 2, yw = this.yard;
+    const base = this.base();
+    box(yw - .2, .08, TILE - .4, '#e9e1d0', x, .04, 0, base);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 9; j++) if ((i + j) % 2) box((yw - .4) / 3 - .06, .02, 1.18, '#4a4440', x - (yw - .4) / 2 + (i + .5) * (yw - .4) / 3, .09, -half + .8 + j * 1.25, base);
+    const pc = this.piece(x, 0);
+    const wallX = -yw / 2 + .15;
+    box(.3, 3.4, TILE - .4, this.spec.stone || '#efe8da', wallX, 1.7, 0, pc);
+    for (const y of [.5, 1.3, 2.1, 2.9]) box(.36, .3, TILE - .4, '#3b3836', wallX, y, 0, pc);
+    for (const s of [-1, 1]) {
+      box(yw - .2, 3.4, .3, this.spec.stone || '#efe8da', 0, 1.7, s * (half - .35), pc);
+      for (const y of [.5, 1.3, 2.1, 2.9]) box(yw - .2, .3, .36, '#3b3836', 0, y, s * (half - .35), pc);
+    }
+    // the wooden gate to the lane, studded, under a striped arch
+    box(1.8, 2.6, .2, '#5b3a22', 0, 1.3, half - .15, pc);
+    for (let k = 0; k < 12; k++) ball(.05, '#c9a227', -.7 + (k % 4) * .47, .5 + Math.floor(k / 4) * .8, half - .03, pc);
+    const ar = mesh(new THREE.TorusGeometry(1, .18, 6, 14, Math.PI), '#3b3836', 0, 2.6, half - .1, pc);
+    ar.scale.y = .5;
+    // the fountain (bahra) with a jet, the lemon tree, jasmine on the wall, pots
+    const fz = -1.2;
+    cyl(.95, 1, .55, '#f5f1e8', 0, .28, fz, pc, 8);
+    const wtr = cyl(.8, .8, .06, '#5ab8ee', 0, .56, fz, pc, 8);
+    wtr.userData.keep = true;
+    cyl(.1, .14, .9, '#f5f1e8', 0, .8, fz, pc, 8);
+    this.points.fountain = [x, 1.35, fz];
+    cyl(.12, .16, 1.6, '#7a5230', 0, .8, 3.3, pc, 6);
+    ball(1, '#3f8f3a', 0, 2.2, 3.3, pc).scale.set(1, .85, 1);
+    for (let k = 0; k < 9; k++) ball(.11, '#ffd21f', Math.sin(k * 2.1) * .8, 2 + Math.cos(k * 1.7) * .5, 3.3 + Math.cos(k * 2.1) * .8, pc);
+    for (let k = 0; k < 10; k++) ball(.28, '#4f9a45', wallX + .25, 2.3 + Math.sin(k) * .5, -4.6 + k * .9, pc);
+    for (let k = 0; k < 14; k++) ball(.06, '#ffffff', wallX + .45, 2.2 + Math.sin(k * 1.3) * .6, -4.7 + k * .65, pc);
+    for (const z of [-4.4, 1.2]) { cyl(.28, .2, .5, '#b5651d', yw / 2 - .5, .25, z, pc, 8); ball(.32, '#5cc461', yw / 2 - .5, .7, z, pc); }
+    this.blocks.push([x - .95, fz - .95, x + .95, fz + .95], [x - .3, 3, x + .3, 3.6]);
+    this.blocks.push([x - yw / 2, -half, x - yw / 2 + .4, half], [x - yw / 2, -half, x + yw / 2, -half + .5], [x - yw / 2, half - .5, x + yw / 2, half]);
   }
 
   // ----- helpers used by the generators -----
@@ -785,6 +837,7 @@ export class Building {
     }
     if (!this.complete) { this.siteTimer = (this.siteTimer || 0) - dt; if (this.siteTimer <= 0) { this.siteTimer = 1; this.tickConstruction(); } return; }
     if (this.needLod && !this.anims.length) this.buildLod();
+    for (const f of this.tickers) f(dt, tm);   // rides turning, the radar...
     if (this.lights) {
       const on = Math.floor(tm * 3) % 2;
       this.lights[0].material.emissiveIntensity = on ? 2.5 : .15;
@@ -847,7 +900,7 @@ export function makeGhostModel(game, spec) {
   const fake = Object.create(Building.prototype);
   Object.assign(fake, {
     game, world: game.world, spec, type: spec.type, def, variant: spec.variant, pieces: [], blocks: [], wallRects: [],
-    spots: {}, points: {}, signs: [], lightSpots: [], floorGroups: [], roofGroups: [], seatRes: {}, anims: [],
+    spots: {}, points: {}, signs: [], lightSpots: [], floorGroups: [], roofGroups: [], seatRes: {}, anims: [], tickers: [],
     W: spec.tiles[0] * TILE - 1.6, D: spec.tiles[1] * TILE - 1.6, cos: 1, sin: 0, cx: 0, cz: 0, angle: 0,
   });
   fake.model = new THREE.Group();

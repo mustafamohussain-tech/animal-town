@@ -50,6 +50,10 @@ export const UNIFORM = {
   firefighter: { shirt: '#c9a46a', pants: '#c9a46a' },
   farmer: { shirt: '#d9534f', pants: '#3e6db5' },
   teacher: { shirt: '#dfeaf7' },
+  imam: { shirt: '#f4f1ea', pants: '#f4f1ea' },
+  professor: { shirt: '#6d5a48', pants: '#3e3a36' },
+  pilot: { shirt: '#ffffff', pants: '#1f2a44' },
+  operator: { shirt: '#ff7043', pants: '#37474f' },
 };
 
 // H = head gear group (origin = head centre), B = body gear group (inside the torso), d = animal, hy = top of skull
@@ -113,6 +117,37 @@ const GEAR = {
     mesh(cylGeo(.47, .35, .07, 24), '#6b7d4a', 0, hy - .08, 0, H);
     openFront(B, 1.0, 1.66, .014, '#7d8f55', .3);
     for (const p of [-.6, .6]) onBody(B, boxGeo(.13, .02, .11), '#6b7d4a', 1.2, p, .03);
+  },
+  // a white turban wrapped round a red cap, a long white robe
+  imam(H, B, d, hy) {
+    mesh(domeGeo(.34), '#b71c1c', 0, hy - .12, 0, H).scale.set(1, .9, 1);
+    mesh(torusGeo(.34, .12, 8, 24), '#ffffff', 0, hy - .12, 0, H).rotation.x = Math.PI / 2;
+    mesh(torusGeo(.3, .1, 8, 24), '#f4f1ea', 0, hy - .02, 0, H).rotation.x = Math.PI / 2;
+    openFront(B, .5, 1.74, .02, '#ffffff', .2);
+  },
+  // glasses and a graduation cap
+  professor(H, B, d, hy) {
+    const e = H.userData.eye || { x: .14, y: .07, z: .3 };
+    for (const s of [-1, 1]) mesh(torusGeo(.095, .014, 8, 20), '#2b2b2b', s * e.x, e.y, e.z + .07, H);
+    mesh(boxGeo(Math.max(.02, e.x * 2 - .19), .02, .02), '#2b2b2b', 0, e.y, e.z + .07, H);
+    mesh(cylGeo(.3, .32, .16, 16), '#1a1a1a', 0, hy - .02, 0, H);
+    mesh(boxGeo(.8, .05, .8), '#1a1a1a', 0, hy + .08, 0, H).rotation.y = Math.PI / 4;
+    mesh(boxGeo(.03, .3, .03), '#ffd23f', .3, hy - .05, .3, H);
+    openFront(B, .9, 1.7, .016, '#5a4a3a', .3);
+  },
+  // a pilot's cap with a badge, and a tie
+  pilot(H, B, d, hy) {
+    mesh(cylGeo(.36, .33, .2, 20), '#1f2a44', 0, hy + .02, 0, H);
+    mesh(cylGeo(.4, .4, .05, 20), '#1f2a44', 0, hy + .13, 0, H);
+    mesh(boxGeo(.4, .03, .2), '#111111', 0, hy - .06, .32, H).rotation.x = .25;
+    mesh(boxGeo(.12, .08, .02), '#d4a017', 0, hy + .03, .36, H);
+    mesh(boxGeo(.08, .36, .02), '#1f2a44', 0, 1.43, torsoRadius(1.43) + .02, B);
+    for (const s of [-1, 1]) mesh(boxGeo(.12, .03, .2), '#d4a017', s * .3, 1.74, 0, B);
+  },
+  // a bright cap
+  operator(H, B, d, hy) {
+    mesh(domeGeo(.38), '#ffd23f', 0, hy - .14, 0, H).scale.set(1, .7, 1);
+    mesh(boxGeo(.42, .04, .32), '#ffd23f', 0, hy - .12, .36, H);
   },
   doctor(H, B) {
     openFront(B, .62, 1.72, .022, '#ffffff', .22);

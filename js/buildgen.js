@@ -2,6 +2,44 @@
 // Every wall side of every floor is its own group, so the camera can "cut away" walls to look inside.
 import * as THREE from 'three';
 import { box, cyl, ball, mesh, sphere, boxGeo, coneGeo, prism, pick } from './util.js';
+
+const BASALT = '#3b3836', LATTICE = '#8a5a32', BEAM = '#5b3a22';
+// Damascus: dark basalt courses in the light stone of the ground floor ("ablaq"), around the door
+function ablaqFloor(W, D, openings, back, left, right, front) {
+  for (let y = .45; y < FH - .3; y += .85) {
+    box(W + .06, .28, .06, BASALT, 0, y, -D / 2 - .01, back);
+    box(.06, .28, D, BASALT, -W / 2 - .01, y, 0, left);
+    box(.06, .28, D, BASALT, W / 2 + .01, y, 0, right);
+    let a = -W / 2;
+    for (const op of [...openings].sort((p, q) => p.c - q.c)) {
+      if (y > op.h + .1) continue;
+      const o0 = op.c - op.w / 2 - .3;
+      if (o0 > a) box(o0 - a, .28, .06, BASALT, (a + o0) / 2, y, D / 2 + .01, front);
+      a = op.c + op.w / 2 + .3;
+    }
+    if (a < W / 2) box(W / 2 - a, .28, .06, BASALT, (a + W / 2) / 2, y, D / 2 + .01, front);
+  }
+}
+// a wooden mashrabiya: a closed bay with a carved lattice hanging out over the lane, on brackets
+function mashrabiya(front, W, D) {
+  const mw = Math.min(W * .45, 4.4), z = D / 2 + .55;
+  box(mw + .2, .2, 1.2, BEAM, 0, .62, z, front);
+  box(mw + .5, .22, 1.45, BEAM, 0, 3.52, z, front);
+  box(mw - .1, 2.6, .05, '#2a1c12', 0, 2.05, z + .5, front);
+  for (const s of [-1, 1]) box(.05, 2.6, 1.0, '#2a1c12', s * (mw / 2 - .05), 2.05, z, front);
+  for (let x = -mw / 2 + .15; x < mw / 2; x += .24) box(.06, 2.6, .08, LATTICE, x, 2.05, z + .55, front);
+  for (let y = .9; y < 3.4; y += .32) box(mw, .05, .08, LATTICE, 0, y, z + .56, front);
+  for (const s of [-1, 1]) for (let zz = -.35; zz < .5; zz += .25) box(.08, 2.6, .06, LATTICE, s * mw / 2, 2.05, z + zz, front);
+  for (const x of [-mw / 2 + .3, 0, mw / 2 - .3]) box(.16, 1.1, .16, BEAM, x, .2, z - .05, front).rotation.x = .7;
+}
+// a wooden pergola with a grapevine on the roof
+function pergola(roof, W, D) {
+  const pw = Math.min(W * .45, 4.5), pd = Math.min(D * .5, 4.5), px = -W / 4;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) cyl(.08, .08, 2.5, BEAM, px + sx * pw / 2, 1.5, sz * pd / 2, roof, 6);
+  for (let k = 0; k < 6; k++) box(pw + .3, .1, .1, BEAM, px, 2.75, -pd / 2 + k * pd / 5, roof);
+  for (let k = 0; k < 16; k++) ball(.42, k % 3 ? '#4f9a45' : '#5cae4c', px + (Math.random() - .5) * pw, 2.9, (Math.random() - .5) * pd, roof);
+  for (let k = 0; k < 8; k++) ball(.13, '#5b2a6e', px + (Math.random() - .5) * pw * .8, 2.5, (Math.random() - .5) * pd * .8, roof);
+}
 import { NIGHT, addGlow } from './daynight.js';
 import { ROOMS, F } from './interiors.js';
 
@@ -51,7 +89,7 @@ function windowsAlong(p, L, place, style, frame, openings = []) {
 export function buildShell(b, spec, W, D, o = {}) {
   const ox = o.ox || 0, oz = o.oz || 0;
   const floors = Math.max(1, spec.floors | 0);
-  const wall = spec.wall, trim = spec.trim || '#ffffff';
+  const wallC = spec.wall, wall = wallC, trim = spec.trim || '#ffffff';
   const role = spec.role || 'office';
   const stairs = floors > 1;
 
@@ -76,6 +114,7 @@ export function buildShell(b, spec, W, D, o = {}) {
 
     // walls (each side separately)
     const back = piece('back'), left = piece('left'), right = piece('right'), front = piece('front');
+    const wall = k === 0 && spec.stone ? spec.stone : wallC;   // a stone ground floor under plaster (Damascus)
     box(W, FH, T, wall, 0, FH / 2, -D / 2 + T / 2, back);
     box(T, FH, D - 2 * T, wall, -W / 2 + T / 2, FH / 2, 0, left);
     box(T, FH, D - 2 * T, wall, W / 2 - T / 2, FH / 2, 0, right);
@@ -93,6 +132,8 @@ export function buildShell(b, spec, W, D, o = {}) {
       if (a < W / 2) box(W / 2 - a, FH, T, wall, (a + W / 2) / 2, FH / 2, fz, front);
       b.wallRects.push(...wallRects(W, D, openings, ox, oz));
     } else box(W, FH, T, wall, 0, FH / 2, fz, front);
+    if (spec.ablaq && k === 0) ablaqFloor(W, D, openings, back, left, right, front);
+    if (spec.mashrabiya && k > 0) mashrabiya(front, W, D);
 
     // windows
     const frame = spec.winFrame || trim;
@@ -190,7 +231,8 @@ export function buildShell(b, spec, W, D, o = {}) {
     hip.scale.set((W + .8), rh, (D + .8));
   } else {
     box(W + .3, .3, D + .3, rc, 0, .15, 0, roof);
-    for (const [w, d, x, z] of [[W + .3, .2, 0, D / 2 + .05], [W + .3, .2, 0, -D / 2 - .05], [.2, D + .3, W / 2 + .05, 0], [.2, D + .3, -W / 2 - .05, 0]]) box(w, .7, d, trim, x, .55, z, roof);
+    for (const [w, d, x, z] of [[W + .3, .2, 0, D / 2 + .05], [W + .3, .2, 0, -D / 2 - .05], [.2, D + .3, W / 2 + .05, 0], [.2, D + .3, -W / 2 - .05, 0]]) box(w, .7, d, spec.parapet || trim, x, .55, z, roof);
+    if (spec.pergola) pergola(roof, W, D);
     if (spec.roof === 'dome') ball(Math.min(W, D) * .3, spec.domeColor || '#d4a017', 0, .3, 0, roof).scale.y = .8;
     if (role === 'apartment' || role === 'office') { box(1.6, 1.2, 1.6, '#9aa3ad', W / 4, .9, -D / 4, roof); cyl(.6, .6, 1.2, '#b0b8c1', -W / 4, .9, -D / 4, roof, 12); }
     if (spec.cross) { box(3, .05, .9, '#e74c3c', 0, .33, 0, roof); box(.9, .05, 3, '#e74c3c', 0, .33, 0, roof); }

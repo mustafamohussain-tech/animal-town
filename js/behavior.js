@@ -437,9 +437,39 @@ export function parkActs(c) {
 }
 
 // ---------- the "brain": what to do when nobody gives orders ----------
+// ---------- the five prayers (by the town's clock): people go to the nearest mosque ----------
+const PRAYERS = [4.75, 12.1, 15.4, 17.9, 19.4];
+export function prayerNow(g) {
+  const h = g.daynight.hour;
+  return PRAYERS.findIndex(t => h >= t && h < t + .5);
+}
+function prayerActs(c) {
+  const g = c.game, k = prayerNow(g);
+  if (k < 0 || c.job === 'imam') return null;
+  const key = new Date().toDateString() + k;
+  if (c.prayed === key) return null;
+  c.prayed = key;   // decided once per prayer
+  const friday = new Date().getDay() === 5 && k === 1;
+  if (Math.random() > (friday ? .8 : .35)) return null;
+  const m = g.town.nearest('mosque', c.root.position);
+  if (!m || dist2d(m.center, c.root.position) > 260) return null;
+  const s = m.reserve('pray');
+  if (!s) return null;
+  return [toSpot(m, s), wait(32, 'pray', { face: s.face, onStart: x => Math.random() < .3 && x.say('🤲'), onEnd: () => m.release('pray', s.idx) })];
+}
+// a trip by plane: into the terminal, away for a while, back with a suitcase
+function travelActs(c, port, pilot = false) {
+  const d = port.spot('door'), inside = port.point('inside');
+  return [toSpot(port, d), wait(1.5, 'wave', { onStart: x => x.say(pilot ? '🧑‍✈️' : '🧳') }),
+    call(x => x.root.position.set(inside.x, 0, inside.z)), wait(rand(50, 110), 'idle'),
+    call(x => { x.root.position.set(d.x, 0, d.z); x.say(pick(pilot ? ['✈️', '🧑‍✈️👋'] : ['🧳✈️', '🌍', '😎']), 3); })];
+}
+
 export function brain(c) {
   const g = c.game;
   if (c.hurt) return routine(patientRoutine(c), 'patient');
+  const pr = prayerActs(c);
+  if (pr) return routine(pr, 'pray');
   // festive days carry on after dark: everyone gathers for the fireworks
   const ev = NIGHT_EVENTS.includes(g.events.active) || !g.daynight.isNight ? g.events.routineFor(c) : null;
   if (ev) return routine(ev, 'event');
@@ -508,6 +538,18 @@ function jobRoutine(c, wp) {
       if (fire) return [fightFire(fire)];
       return workAt(rand(4, 7), 'idle');
     }
+    case 'imam': {
+      // at prayer time he leads the prayer (and calls it first); otherwise he greets people at the door
+      const now = prayerNow(g) >= 0;
+      return workAt(rand(10, 16), now ? 'pray' : 'idle', { onStart: x => { if (now && chance(.5)) x.say('📢 الله أكبر', 4); else if (chance(.3)) x.say(pick(['🕌', '🤲', '📿'])); } });
+    }
+    case 'professor':
+      return workAt(rand(8, 12), 'point', { tool: 'pointer', onStart: x => chance(.6) && x.say(pick(['🎓', '📐', '🔬', '📖', '🧪', '🌍'])) });
+    case 'pilot':
+      if (chance(.3)) return travelActs(c, wp, true);
+      return workAt(rand(6, 10), 'idle', { onStart: x => chance(.4) && x.say(pick(['✈️', '🧑‍✈️', '🛫', '🛬'])) });
+    case 'operator':
+      return workAt(rand(6, 10), 'idle', { onStart: x => chance(.4) && x.say(pick(['🎡', '🎠', '🎢', '🎟️'])) });
     case 'teacher':
       return workAt(rand(7, 10), 'point', { tool: 'pointer', onStart: x => x.say(pick(['📚', '✏️', '🔤', '➕', '🌍', '🧮'])) });
     case 'fisher': {
@@ -560,6 +602,16 @@ function idleRoutine(c) {
     const l = r2 < .45 ? swimActs(c) : r2 < .65 ? boatActs(c) : waterFishActs(c);
     if (l) return l;
   }
+  // a day out: the amusement park, a lecture at the university, a trip by plane
+  if (g.daynight.hour > 8 && g.daynight.hour < 23 && Math.random() < .08) {
+    const am = town.nearest('amusement', c.root.position), s = am && am.reserve('fun');
+    if (s) return [toSpot(am, s), wait(rand(8, 14), s.pose, { face: s.face, onStart: x => x.say(pick(['🎡', '🎠', '😄', '🤩', '🍿', '🎢'])), onEnd: () => am.release('fun', s.idx) })];
+  }
+  if (!night && Math.random() < .06) {
+    const un = town.nearest('university', c.root.position), s = un && un.reserve('study');
+    if (s) return [toSpot(un, s), wait(rand(10, 16), 'sitGround', { face: s.face, onStart: x => x.say(pick(['📖', '✏️', '🎓', '🤔'])), onEnd: () => un.release('study', s.idx) })];
+  }
+  if (!night && Math.random() < .015) { const ap = town.nearest('airport', c.root.position); if (ap) return travelActs(c, ap); }
   if (!night) {
     if (r < .28) { const shop = town.randomOf('shop'); if (shop) { const l = buyActs(c, shop); if (l.length) return l; } }
     if (r < .38) { const rest = town.randomOf('restaurant'); if (rest) { const l = eatActs(c, rest); if (l.length) return l; } }

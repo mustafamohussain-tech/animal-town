@@ -471,6 +471,15 @@ export class Character {
           P.armRx = -1.55 + s * 1.5; P.armLx = -1.55 - s * 1.5; P.armRz = -.25 - Math.max(0, s) * .25; P.armLz = .25 + Math.max(0, -s) * .25;
           P.legL = kick * .32; P.legR = -kick * .32; break;
         }
+        case 'pray': {
+          // everyone prays together (the same clock): standing, bowing, prostrating, sitting
+          const ph = t % 16;
+          if (ph < 6) { P.armRx = P.armLx = -.75; P.armRz = .45; P.armLz = -.45; }
+          else if (ph < 8.5) { P.bodyRx = .55; P.bodyY = -.08; P.headRx = .35; P.armRx = P.armLx = -.7; }
+          else if (ph < 12) { P.legL = P.legR = -1.5; P.bodyY = -.8; P.bodyRx = .95; P.headRx = .3; P.armRx = P.armLx = -1.5; }
+          else { P.legL = P.legR = -1.5; P.bodyY = -.78; P.armRx = P.armLx = -.35; }
+          break;
+        }
         case 'sleep': case 'lie': case 'sleepGround':
           P.bodyRx = -1.5; P.bodyY = .32; P.armRz = -.1; P.armLz = .1; break;
         default:

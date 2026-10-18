@@ -153,6 +153,7 @@ export const SIGN_AR = {
   shop_toys: 'متجر الألعاب', restaurant: 'مطعم', hospital: 'مستشفى', school: 'مدرسة', police: 'مركز الشرطة',
   firestation: 'مركز الإطفاء', farm: 'مزرعة', dock: 'بركة الصيد', park: 'حديقة', garage: 'موقف السيارات',
   custom: 'مبنى', busStop: 'موقف الحافلات',
+  mosque: 'جامع', university: 'جامعة', airport: 'مطار', amusement: 'مدينة الألعاب',
 };
 // sub = an optional second line (e.g. the owner's name on a house)
 export function signTexture(emoji, text, bg = '#2b3a55', fg = '#ffffff', sub = '') {

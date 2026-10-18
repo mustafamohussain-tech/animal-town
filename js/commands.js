@@ -31,6 +31,11 @@ const PHRASES = {
 };
 
 const BUILDINGS = {
+  // (before "mosque": جامعة contains جامع; before "park" and toy shops: مدينة ألعاب)
+  university: list('university,college,campus,جامعه,كليه'),
+  airport: list('airport,airfield,مطار'),
+  amusement: list('amusement park,theme park,funfair,fun fair,luna park,مدينه العاب,مدينه الالعاب,ملاهي,ملاهى'),
+  mosque: list('mosque,masjid,جامع,مسجد'),
   police: list('police station,station police,مركز شرطه,مركز الشرطه,قسم شرطه,مخفر'),
   firestation: list('fire station,firestation,fire house,fire dept,مركز اطفاء,مطافي,دفاع مدني,الدفاع المدني,محطه اطفاء'),
   apartment: list('apartment,apartments,flats,tower,skyscraper,عماره,شقق,برج,ناطحه'),
@@ -49,6 +54,10 @@ const SHOP_VARIANTS = {
   toys: list('toy,toys,games,العاب,لعب,العاب'),
 };
 const JOBWORDS = {
+  professor: list('professor,lecturer,بروفيسور,محاضر,دكتور جامعي,استاذ جامعي,استاذ جامعه'),
+  imam: list('imam,muezzin,مؤذن,خطيب,امام جامع,امام مسجد,امام الجامع'),
+  pilot: list('pilot,طيار,كابتن طيار'),
+  operator: list('ride operator,operator,مشغل العاب,مشغل'),
   builder: list('builder,constructor,بناء,عامل بناء'),
   shopkeeper: list('shopkeeper,seller,sell,cashier,merchant,vendor,salesman,بائع,بياع,تاجر,كاشير,يبيع'),
   farmer: list('farmer,farming,مزارع,فلاح'),
@@ -59,7 +68,7 @@ const JOBWORDS = {
   fisher: list('fisher,fisherman,fish,fishing,صياد,صيد,يصيد'),
   doctor: list('doctor,nurse,doc,dr,طبيب,دكتور,ممرض,ممرضه,طبيبه'),
 };
-const PLACE_JOB = { shop: 'shopkeeper', farm: 'farmer', restaurant: 'chef', police: 'police', firestation: 'firefighter', school: 'teacher', dock: 'fisher', hospital: 'doctor' };
+const PLACE_JOB = { shop: 'shopkeeper', farm: 'farmer', restaurant: 'chef', police: 'police', firestation: 'firefighter', school: 'teacher', dock: 'fisher', hospital: 'doctor', mosque: 'imam', university: 'professor', airport: 'pilot', amusement: 'operator' };
 const JOB_PLACE = Object.fromEntries(Object.entries(PLACE_JOB).map(([p, j]) => [j, p]));
 const ACTIONS = {
   drive: list('drive,driving,taxi,cab,ride,يسوق,سوق السياره,سواقه,سياقه,تكسي,تاكسي,بالسياره,بسيارته'),

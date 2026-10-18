@@ -227,7 +227,16 @@ export class BuildingProxies {
     if (!on && b.slot == null) return;
     const s = this.slotOf(b), { cx, cz, W, D, angle } = b;
     if (!on) { for (const k of ['body', 'roof', 'slab']) this.set(k, s, 0, 0, 0, 0); return; }
-    const sp = b.spec;
+    const sp = b.spec, px = b.def.proxy;
+    if (px && b.complete) {
+      // a landmark: a block of its main hall, with a dome (pyramid) or a flat roof
+      const w = W * px.k, d = D * px.k;
+      this.set('body', s, cx, 0, cz, w, px.h, d, angle, px.wall);
+      if (px.shape === 'pyr') { this.set('roof', s, cx, px.h, cz, w * .6, w * .45, d * .6, angle, px.roof); this.set('slab', s, 0, 0, 0, 0); }
+      else if (px.shape === 'flat') { this.set('slab', s, cx, px.h, cz, w + .4, .5, d + .4, angle, px.roof); this.set('roof', s, 0, 0, 0, 0); }
+      else { this.set('roof', s, 0, 0, 0, 0); this.set('slab', s, 0, 0, 0, 0); }
+      return;
+    }
     if (b.def.open) {
       this.set('body', s, cx, 0, cz, W, .35, D, angle, OPEN_COL[b.type] || '#9ccc65');
       this.set('roof', s, 0, 0, 0, 0); this.set('slab', s, 0, 0, 0, 0);
