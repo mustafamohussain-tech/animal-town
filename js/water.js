@@ -595,16 +595,73 @@ export class Water {
       r.scale.setScalar(.6 + k * 2.2);
       r.material.opacity = .5 * (1 - k);
     }
-    // a fish jumps now and then
-    this.splashT -= dt;
-    if (this.splashT <= 0) {
-      this.splashT = rand(2.5, 6);
-      const w = pick(this.list);
-      const p = w.kind === 'lake' ? pick(w.duckLoop) : pick(w.S);
-      this.game.effects.emit('splash', { x: p.x + rand(-2, 2), y: WATER_Y + .1, z: p.z + rand(-2, 2) }, 7);
-    }
+    this.jumpFish(dt);
   }
 }
+
+// ---------- fish that jump out of the water now and then (somewhere random, at random times) ----------
+function makeFish() {
+  const g = new THREE.Group(), body = new THREE.Group();
+  g.add(body);
+  const col = pick(['#9fb3c4', '#c0ccd6', '#d8a86a', '#8fa3a8']);
+  const b = mesh(sphere(.22, 12, 8), col, 0, 0, 0, body);
+  b.scale.set(.75, .8, 1.9);
+  mesh(sphere(.12, 10, 6), '#f2f2f2', 0, -.07, .05, body).scale.set(.6, .5, 1.6);
+  const tail = mesh(new THREE.ConeGeometry(.2, .35, 4), col, 0, 0, -.5, body);
+  tail.rotation.x = -Math.PI / 2;
+  tail.scale.set(.25, 1, 1.2);
+  mesh(new THREE.ConeGeometry(.08, .2, 4), col, 0, .2, 0, body);
+  for (const s of [-1, 1]) mesh(sphere(.035, 6, 4), '#111111', s * .12, .05, .3, body);
+  mergeStatic(body);
+  g.userData.body = body;
+  return g;
+}
+Water.prototype.jumpFish = function (dt) {
+  this.fish ||= [];
+  this.fishT = (this.fishT ?? rand(1, 3)) - dt;
+  const cam = this.game.world.controls.target;
+  if (this.fishT <= 0) {
+    this.fishT = rand(.8, 3.5);   // irregular, like real fish
+    // only where someone can see it
+    const near = this.list.filter(w => { const b = this.bounds(w); return cam.x > b.x0 - 150 && cam.x < b.x1 + 150 && cam.z > b.z0 - 150 && cam.z < b.z1 + 150; });
+    const w = near.length && pick(near);
+    let p = null;
+    if (w?.kind === 'lake') {
+      for (let t = 0; t < 8 && !p; t++) { const q = pick(w.poly), u = rand(.15, .8), x = q.x + (w.c.x - q.x) * u, z = q.z + (w.c.z - q.z) * u; if (inPoly(w.poly, x, z) && edgeDist(w.poly, x, z) > 2.5) p = { x, z }; }
+    } else if (w) {
+      const s = pick(w.S), o = rand(-1, 1) * Math.max(0, w.width / 2 - 1.6);
+      p = { x: s.x + s.nx * o, z: s.z + s.nz * o };
+    }
+    if (p) {
+      let f = this.fish.find(q => !q.visible);
+      if (!f) { if (this.fish.length >= 6) f = null; else { f = makeFish(); this.game.scene.add(f); this.fish.push(f); } }
+      if (f) {
+        const a = rand(0, Math.PI * 2), len = rand(1.6, 3.2);
+        f.userData.jump = { x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), len, h: rand(.7, 1.6), t: 0, dur: rand(.7, 1.1) };
+        f.rotation.y = a;
+        f.visible = true;
+        f.scale.setScalar(rand(.8, 1.4));
+        this.game.effects.emit('splash', { x: p.x, y: WATER_Y + .1, z: p.z }, 6);
+        this.ripple(p.x, p.z);
+      }
+    }
+  }
+  for (const f of this.fish) {
+    if (!f.visible) continue;
+    const j = f.userData.jump;
+    j.t += dt;
+    const u = Math.min(1, j.t / j.dur), y = WATER_Y - .2 + Math.sin(u * Math.PI) * j.h;
+    f.position.set(j.x + j.dx * j.len * u, y, j.z + j.dz * j.len * u);
+    f.userData.body.rotation.x = -Math.cos(u * Math.PI) * .9;   // nose up going out, nose down going in
+    f.userData.body.rotation.z = Math.sin(j.t * 25) * .15;        // a wiggle
+    if (u >= 1) {
+      f.visible = false;
+      const ex = j.x + j.dx * j.len, ez = j.z + j.dz * j.len;
+      this.game.effects.emit('splash', { x: ex, y: WATER_Y + .1, z: ez }, 9);
+      this.ripple(ex, ez);
+    }
+  }
+};
 
 // a preview mesh while drawing (semi-transparent)
 export function previewWater(kind, pts, width) {

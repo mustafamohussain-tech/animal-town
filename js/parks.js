@@ -87,8 +87,20 @@ export class Parks {
     }
     return false;
   }
-  // the lawn is grass: people stay on the park's paths (paths.js)
-  stampCost() {}
+  // a park's lawn is the one grass people may walk on (its paths are a little nicer: paths.js)
+  stampCost(i, j) {
+    const T = this.game.tiles, r = T.get(i, j);
+    if (r?.road || r?.curveAny) return;   // never the driving part of a road through the park
+    const grid = this.game.world.grid, C = grid.cost, n = grid.n, key = i + ',' + j;
+    for (const p of this.list) {
+      if (!p.tiles.has(key)) continue;
+      const i0 = grid.cell(i * TILE - TILE / 2), j0 = grid.cell(j * TILE - TILE / 2);
+      for (let b = 0; b < TILE; b++) for (let a = 0; a < TILE; a++) {
+        const ci = i0 + a, cj = j0 + b, k = cj * n + ci;
+        if (C[k] > 2 && inPoly(p.poly, grid.center(ci), grid.center(cj))) C[k] = 2;
+      }
+    }
+  }
 
   // a new park plants itself
   plant(p) {
