@@ -7,7 +7,6 @@ import { runCommand } from './commands.js';
 import { saveGame, clearSave, clearAll } from './save.js';
 import { ProfileCard, BuildingCard, staffOf, fmtDur, PLATFORMS, accountUrl, cleanHandle, belongings, followLink, parseFollowers } from './profile.js';
 import { exportTown, importTown } from './save.js';
-import { publishTown, getToken, setToken, getRepo, setRepo } from './publish.js';
 import { EVENT_ORDER } from './events.js';
 import { RIVER_W } from './water.js';
 import { loadDesigns, saveDesigns, designToSpec, designFromPhoto, getApiKey, setApiKey, ROLES, ROOFS, WINDOWS } from './designs.js';
@@ -76,29 +75,6 @@ export class UI {
       else $('stage').requestFullscreen?.();
     };
     $('btn-export').onclick = () => exportTown(game);
-    // one click: the town goes to the website (GitHub); the access token stays in this browser only
-    $('pub-token').value = getToken();
-    $('pub-token').onchange = e => { setToken(e.target.value.trim()); this.renderPublish(); };
-    $('pub-repo').value = getRepo();
-    $('pub-repo').onchange = e => setRepo(e.target.value.trim());
-    $('pub-btn').onclick = async () => {
-      if (this.publishing) return;
-      this.publishing = true;
-      $('pub-btn').disabled = true;
-      const st = $('pub-status');
-      try {
-        const r = await publishTown(game, (i, n) => { st.textContent = `⏳ ${t('pubStep' + i)} (${i}/${n})`; });
-        try { localStorage.setItem('animal-town-published-at', String(r.at)); } catch { /* ignore */ }
-        st.textContent = t('pubDone', { kb: Math.round(r.size / 1024) });
-        this.addLog(t('pubDone', { kb: Math.round(r.size / 1024) }));
-      } catch (err) {
-        st.textContent = '⚠️ ' + t('pubErr_' + (err.code || 'http'), { d: err.detail || err.message || '' });
-      } finally {
-        this.publishing = false;
-        $('pub-btn').disabled = false;
-      }
-    };
-    this.renderPublish();
     $('in-site').value = game.siteUrl || '';
     $('in-site').oninput = e => { game.siteUrl = e.target.value.trim(); };
     $('in-import').onchange = async e => {
@@ -455,7 +431,6 @@ export class UI {
   }
 
   refreshAll() {
-    this.renderPublish();
     $('sel-cycle').value = this.game.daynight.real ? 'real' : String(this.game.daynight.cycleMs);
     $('sel-build').value = String(this.game.buildDuration);
     $('chk-follow').checked = this.game.followNew;
@@ -733,13 +708,6 @@ export class UI {
     }
   }
   // ---------- undo / redo ----------
-  renderPublish() {
-    let at = 0;
-    try { at = +localStorage.getItem('animal-town-published-at') || 0; } catch { /* ignore */ }
-    const st = document.getElementById('pub-status');
-    if (!st || this.publishing) return;
-    st.textContent = !getToken() ? t('pubNeedToken') : at ? t('pubLast', { t: new Date(at).toLocaleString(getLang() === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }) }) : '';
-  }
   renderHistory() {
     const h = this.game.history;
     $('btn-undo').disabled = !h.done.length;
